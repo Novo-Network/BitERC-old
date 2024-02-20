@@ -1,0 +1,18 @@
+file = true
+file_path = "./da_file"
+ipfs = false
+ipfs_url = ""
+celestia = false
+celestia_url = ""
+celestia_token = ""
+namespace_id = ""
+default = "file"
+
+btc_url="http://127.0.0.1:18443"
+username = "admin1"
+password = "123"
+network = "regtest"
+fee = 2000
+
+eth_url = "http://127.0.0.1:8545"
+chain_id = 65535

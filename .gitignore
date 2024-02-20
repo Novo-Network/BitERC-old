@@ -1,0 +1,9 @@
+debug/
+release/
+target/
+Cargo.lock
+.idea
+.vscode
+.storage
+data
+da_file
