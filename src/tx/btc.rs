@@ -3,6 +3,7 @@ use std::str::FromStr;
 use bitcoin::{
     absolute::LockTime,
     ecdsa::Signature,
+    hashes::{sha256, Hash},
     opcodes::all::OP_RETURN,
     script::Builder,
     secp256k1::{All, Message, Secp256k1, SecretKey},
@@ -12,51 +13,65 @@ use bitcoin::{
     Transaction, TxIn, TxOut, Txid, Witness,
 };
 use bitcoincore_rpc::{json, Auth, Client, RpcApi};
+use ethers::{types::H160, utils::keccak256};
 use ruc::*;
 
 #[allow(unused)]
 pub struct BtcTransactionBuilder {
-    client: Client,
-    private_key: PrivateKey,
+    pub client: Client,
 }
 
 #[allow(unused)]
 impl BtcTransactionBuilder {
-    pub async fn new(
-        url: &str,
-        username: &str,
-        password: &str,
-        sk: &str,
-        network: &str,
-    ) -> Result<Self> {
+    pub async fn new(url: &str, username: &str, password: &str) -> Result<Self> {
         let client = Client::new(
             url,
             Auth::UserPass(username.to_string(), password.to_string()),
         )
         .c(d!())?;
 
-        let private_key = PrivateKey {
-            compressed: true,
-            network: Network::from_core_arg(network).c(d!())?,
-            inner: SecretKey::from_str(sk.strip_prefix("0x").unwrap_or(sk)).c(d!())?,
-        };
+        Ok(Self { client })
+    }
+    pub async fn get_eth_from_address(&self, txid: &Txid, vout: u32) -> Result<H160> {
+        let script = self
+            .client
+            .get_raw_transaction(&txid, None)
+            .c(d!())
+            .and_then(|tx| {
+                tx.output
+                    .get(vout as usize)
+                    .map(|v| v.script_pubkey.clone())
+                    .ok_or(eg!("utxo not fount {:?}", txid))
+            })?;
 
-        Ok(Self {
-            client,
-            private_key,
-        })
+        let hash = if script.is_p2pk() || script.is_p2pkh() {
+            let data = script.p2pk_public_key().c(d!())?.to_bytes();
+            keccak256(keccak256(&data))
+        } else {
+            let mut hasher = sha256::HashEngine::default();
+            let data = script.as_bytes().to_vec();
+            sha256::Hash::from_engine(hasher).to_byte_array()
+        };
+        Ok(H160::from_slice(&hash[0..20]))
     }
     pub async fn build_transaction(
         &self,
+        sk: &str,
+        network: &str,
         fee: u64,
         hash: &[u8; 40],
         txid: String,
         vout: u32,
     ) -> Result<Txid> {
+        let private_key = PrivateKey {
+            compressed: true,
+            network: Network::from_core_arg(network).c(d!())?,
+            inner: SecretKey::from_str(sk.strip_prefix("0x").unwrap_or(sk)).c(d!())?,
+        };
         let fee = Amount::from_sat(fee);
         let secp: Secp256k1<All> = Secp256k1::new();
-        let pk = self.private_key.public_key(&secp);
-        let addr = Address::p2wpkh(&pk, self.private_key.network).c(d!())?;
+        let pk = private_key.public_key(&secp);
+        let addr = Address::p2wpkh(&pk, private_key.network).c(d!())?;
         log::info!("btc from address: {}", addr);
         let mut input = Vec::new();
         let mut sign_inputs = Vec::new();
@@ -124,7 +139,7 @@ impl BtcTransactionBuilder {
         // Sign the sighash using the secp256k1 library (exported by rust-bitcoin).
         let msg = Message::from(sighash);
 
-        let signature = secp.sign_ecdsa(&msg, &self.private_key.inner);
+        let signature = secp.sign_ecdsa(&msg, &private_key.inner);
 
         // Update the witness stack.
         let signature = Signature {

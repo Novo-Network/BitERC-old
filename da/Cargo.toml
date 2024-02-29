@@ -14,8 +14,8 @@ base58 = "0.2.0"
 
 async-trait = "0.1.72"
 
-ipfs-api-backend-hyper = { workspace = true }
-ipfs-api = { workspace = true }
+ipfs-api-backend-hyper = { version = "0.6.0", features = ["with-send-sync"] }
+ipfs-api = { version = "0.17.0", features = ["with-hyper-rustls"], default-features = false }
 
 celestia-rpc = { git = "https://github.com/eigerco/celestia-node-rs.git" }
 celestia-types = { git = "https://github.com/eigerco/celestia-node-rs.git" }

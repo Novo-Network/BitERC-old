@@ -1,7 +1,6 @@
 #![deny(warnings)]
 
 mod config;
-mod evm_runtime;
 mod fetcher_service;
 mod tx;
 mod vout_code;
@@ -11,9 +10,11 @@ use std::{sync::Arc, time::Duration};
 use clap::Parser;
 use config::Config;
 use da::create_da_mgr;
-use evm_runtime::EvmRuntime;
 use fetcher_service::FetcherService;
-use rt_evm_model::{traits::BlockStorage, types::H160};
+use rt_evm::{
+    model::{traits::BlockStorage, types::H160},
+    EvmRuntime,
+};
 use ruc::*;
 use tokio::time::sleep;
 
@@ -42,7 +43,12 @@ impl Args {
             cfg.celestia,
             cfg.celestia_url.as_ref().map(|x| x.as_str()),
             cfg.celestia_token.as_ref().map(|x| x.as_str()),
-            cfg.namespace_id.as_ref().map(|x| x.as_str()),
+            cfg.celestia_namespace_id.as_ref().map(|x| x.as_str()),
+            cfg.greenfield,
+            cfg.greenfield_rpc_addr.as_ref().map(|x| x.as_str()),
+            cfg.greenfield_chain_id.as_ref().map(|x| x.as_str()),
+            cfg.greenfield_bucket.as_ref().map(|x| x.as_str()),
+            cfg.greenfield_password_file.as_ref().map(|x| x.as_str()),
             &cfg.default,
         )
         .await
@@ -81,19 +87,23 @@ impl Args {
             start + 1,
             cfg.chain_id,
             Arc::new(da_mgr),
-        )?;
+        )
+        .await?;
         loop {
             if let Ok(Some(block)) = fetcher.get_block().await {
                 let mut txs = vec![];
                 for btc_tx in block.txdata.iter() {
-                    if let Ok(evm_txs) = fetcher.decode_transaction(btc_tx).await {
-                        if !evm_txs.is_empty() {
-                            for i in evm_txs.iter() {
-                                if let Ok(_) = evm_rt.check_signed_tx(i) {
-                                    txs.push(i.clone());
+                    match fetcher.decode_transaction(btc_tx).await {
+                        Ok(evm_txs) => {
+                            if !evm_txs.is_empty() {
+                                for i in evm_txs.iter() {
+                                    if let Ok(_) = evm_rt.check_signed_tx(i) {
+                                        txs.push(i.clone());
+                                    }
                                 }
                             }
                         }
+                        Err(e) => log::debug!("decode_transaction error:{}", e),
                     }
                 }
                 log::debug!("execute transaction:{:#?}", txs);

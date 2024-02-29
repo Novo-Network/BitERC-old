@@ -1,14 +1,19 @@
-file = true
-file_path = "./da_file"
+file = false
+file_path = ""
 ipfs = false
 ipfs_url = ""
 celestia = false
 celestia_url = ""
 celestia_token = ""
-namespace_id = ""
-default = "file"
+celestia_namespace_id = ""
+greenfield = true
+greenfield_rpc_addr = "https://gnfd-testnet-fullnode-tendermint-us.bnbchain.org:443"
+greenfield_chain_id = "greenfield_5600-1"
+greenfield_bucket = "bucket123123123"
+greenfield_password_file = "/tmp/password"
+default = "greenfield"
 
-btc_url="http://127.0.0.1:18443"
+btc_url = "http://127.0.0.1:18443"
 username = "admin1"
 password = "123"
 network = "regtest"

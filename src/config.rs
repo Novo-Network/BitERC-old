@@ -12,7 +12,12 @@ pub struct Config {
     pub celestia: bool,
     pub celestia_url: Option<String>,
     pub celestia_token: Option<String>,
-    pub namespace_id: Option<String>,
+    pub celestia_namespace_id: Option<String>,
+    pub greenfield: bool,
+    pub greenfield_rpc_addr: Option<String>,
+    pub greenfield_chain_id: Option<String>,
+    pub greenfield_bucket: Option<String>,
+    pub greenfield_password_file: Option<String>,
     pub default: String,
 
     pub btc_url: String,
