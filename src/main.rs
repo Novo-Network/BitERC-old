@@ -37,18 +37,18 @@ impl Args {
         let cfg = Config::new(&self.config)?;
         let da_mgr = create_da_mgr(
             cfg.file,
-            cfg.file_path.as_ref().map(|x| x.as_str()),
+            cfg.file_path.as_deref(),
             cfg.ipfs,
-            cfg.ipfs_url.as_ref().map(|x| x.as_str()),
+            cfg.ipfs_url.as_deref(),
             cfg.celestia,
-            cfg.celestia_url.as_ref().map(|x| x.as_str()),
-            cfg.celestia_token.as_ref().map(|x| x.as_str()),
-            cfg.celestia_namespace_id.as_ref().map(|x| x.as_str()),
+            cfg.celestia_url.as_deref(),
+            cfg.celestia_token.as_deref(),
+            cfg.celestia_namespace_id.as_deref(),
             cfg.greenfield,
-            cfg.greenfield_rpc_addr.as_ref().map(|x| x.as_str()),
-            cfg.greenfield_chain_id.as_ref().map(|x| x.as_str()),
-            cfg.greenfield_bucket.as_ref().map(|x| x.as_str()),
-            cfg.greenfield_password_file.as_ref().map(|x| x.as_str()),
+            cfg.greenfield_rpc_addr.as_deref(),
+            cfg.greenfield_chain_id.as_deref(),
+            cfg.greenfield_bucket.as_deref(),
+            cfg.greenfield_password_file.as_deref(),
             &cfg.default,
         )
         .await
@@ -97,7 +97,7 @@ impl Args {
                         Ok(evm_txs) => {
                             if !evm_txs.is_empty() {
                                 for i in evm_txs.iter() {
-                                    if let Ok(_) = evm_rt.check_signed_tx(i) {
+                                    if evm_rt.check_signed_tx(i).is_ok() {
                                         txs.push(i.clone());
                                     }
                                 }

@@ -27,6 +27,12 @@ pub struct DAServiceManager {
     default: u8,
 }
 
+impl Default for DAServiceManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DAServiceManager {
     pub fn new() -> Self {
         Self {

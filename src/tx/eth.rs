@@ -36,7 +36,7 @@ impl EthTransactionBuilder {
         sig: &str,
         args: Vec<String>,
     ) -> Result<(Bytes, u64)> {
-        let mut tx = TransactionRequest::new().value(value.clone()).from(from);
+        let mut tx = TransactionRequest::new().value(value).from(from);
         log::info!("eth from address: {:?}", from);
         if let Some(to) = to {
             tx = tx.to(to);

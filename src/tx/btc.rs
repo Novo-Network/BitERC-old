@@ -35,7 +35,7 @@ impl BtcTransactionBuilder {
     pub async fn get_eth_from_address(&self, txid: &Txid, vout: u32) -> Result<H160> {
         let script = self
             .client
-            .get_raw_transaction(&txid, None)
+            .get_raw_transaction(txid, None)
             .c(d!())
             .and_then(|tx| {
                 tx.output
@@ -46,7 +46,7 @@ impl BtcTransactionBuilder {
 
         let hash = if script.is_p2pk() || script.is_p2pkh() {
             let data = script.p2pk_public_key().c(d!())?.to_bytes();
-            keccak256(keccak256(&data))
+            keccak256(keccak256(data))
         } else {
             let mut hasher = sha256::HashEngine::default();
             let data = script.as_bytes().to_vec();

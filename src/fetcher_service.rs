@@ -100,9 +100,7 @@ impl FetcherService {
             .map(|txout| txout.value.to_sat())
             .sum::<u64>();
         let mut ret = vec![];
-        if input_amount <= output_amuont {
-            Ok(ret)
-        } else if btc_tx.input.is_empty() {
+        if input_amount <= output_amuont || btc_tx.input.is_empty() {
             Ok(ret)
         } else {
             for (index, out) in btc_tx.output.iter().enumerate() {

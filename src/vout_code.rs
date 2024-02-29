@@ -31,15 +31,11 @@ impl VoutCode {
     pub fn encode(&self) -> [u8; 40] {
         let mut code: [u8; 40] = [0; 40];
         let chain_id = self.chain_id.to_be_bytes();
-        for i in 0..4 {
-            code[i] = chain_id[i];
-        }
+        code[..4].copy_from_slice(&chain_id[..4]);
         code[4] = self.tx_ty;
         code[5] = self.da_ty;
         code[6] = self.filling;
-        for i in 0..self.hash.len() {
-            code[i + 8] = self.hash[i];
-        }
+        code[8..(self.hash.len() + 8)].copy_from_slice(&self.hash[..]);
         code
     }
     pub fn decode(data: &[u8]) -> Result<Self> {
@@ -52,9 +48,8 @@ impl VoutCode {
         let version = data[6];
         let filling = data[7];
         let mut hash = [0; 32];
-        for i in 0..hash.len() {
-            hash[i] = data[i + 8];
-        }
+        let len = hash.len();
+        hash.copy_from_slice(&data[8..(len + 8)]);
         Ok(Self {
             chain_id,
             tx_ty,

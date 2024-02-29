@@ -45,18 +45,18 @@ async fn main() -> Result<()> {
     let cfg = Config::new(&cmd.config)?;
     let da_mgr = create_da_mgr(
         cfg.file,
-        cfg.file_path.as_ref().map(|x| x.as_str()),
+        cfg.file_path.as_deref(),
         cfg.ipfs,
-        cfg.ipfs_url.as_ref().map(|x| x.as_str()),
+        cfg.ipfs_url.as_deref(),
         cfg.celestia,
-        cfg.celestia_url.as_ref().map(|x| x.as_str()),
-        cfg.celestia_token.as_ref().map(|x| x.as_str()),
-        cfg.celestia_namespace_id.as_ref().map(|x| x.as_str()),
+        cfg.celestia_url.as_deref(),
+        cfg.celestia_token.as_deref(),
+        cfg.celestia_namespace_id.as_deref(),
         cfg.greenfield,
-        cfg.greenfield_rpc_addr.as_ref().map(|x| x.as_str()),
-        cfg.greenfield_chain_id.as_ref().map(|x| x.as_str()),
-        cfg.greenfield_bucket.as_ref().map(|x| x.as_str()),
-        cfg.greenfield_password_file.as_ref().map(|x| x.as_str()),
+        cfg.greenfield_rpc_addr.as_deref(),
+        cfg.greenfield_chain_id.as_deref(),
+        cfg.greenfield_bucket.as_deref(),
+        cfg.greenfield_password_file.as_deref(),
         &cfg.default,
     )
     .await
@@ -67,7 +67,7 @@ async fn main() -> Result<()> {
     let from = btc_builder.get_eth_from_address(&txid, cmd.vout).await?;
     let eth_builder = EthTransactionBuilder::new(&cfg.eth_url, &cmd.private_key).await?;
     let data = match cmd.data {
-        Some(v) => hex_decode(&v.strip_prefix("0x").unwrap_or(&v)).c(d!())?,
+        Some(v) => hex_decode(v.strip_prefix("0x").unwrap_or(&v)).c(d!())?,
         None => vec![],
     };
     let sig = cmd.sig.clone().unwrap_or(String::new());

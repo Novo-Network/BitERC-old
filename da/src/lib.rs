@@ -22,6 +22,7 @@ use celestia_rpc::Client;
 use celestia_types::nmt::Namespace;
 use ipfs_api_backend_hyper::{IpfsClient, TryFromUri};
 
+#[allow(clippy::too_many_arguments)]
 pub async fn create_da_mgr(
     file: bool,
     file_path: Option<&str>,
@@ -73,7 +74,7 @@ pub async fn create_da_mgr(
     let mut da_mgr = DAServiceManager::new();
     if file {
         let file_path = file_path.ok_or(anyhow!("file path can not be empty"))?;
-        let file_service = FileService::new(PathBuf::from(&file_path))?;
+        let file_service = FileService::new(PathBuf::from(file_path))?;
         if 0 == flag {
             da_mgr.add_default_service(file_service);
         } else {
@@ -84,7 +85,7 @@ pub async fn create_da_mgr(
     if ipfs {
         let ipfs_url = ipfs_url.ok_or(anyhow!("ipfs url can not be empty"))?;
         let ipfs_service = IpfsService {
-            ipfs: Arc::new(IpfsClient::from_str(&ipfs_url)?),
+            ipfs: Arc::new(IpfsClient::from_str(ipfs_url)?),
         };
         if 1 == flag {
             da_mgr.add_default_service(ipfs_service);
@@ -103,7 +104,7 @@ pub async fn create_da_mgr(
                     .map_err(|_e| anyhow!("namespace try into error"))
             })?;
         let celestia_service = CelestiaService {
-            client: Arc::new(Client::new(&celestia_url, celestia_token.as_deref()).await?),
+            client: Arc::new(Client::new(celestia_url, celestia_token).await?),
             namespace: Namespace::const_v0(namespace_id),
         };
         if 2 == flag {

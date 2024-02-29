@@ -64,7 +64,7 @@ impl DAService for GreenfieldService {
     }
 
     async fn get_tx(&self, hash: &[u8]) -> Result<Vec<u8>> {
-        let key = hex::encode(&hash);
+        let key = hex::encode(hash);
         println!("get tx");
         let file_name = format!("/tmp/{}", key);
 
