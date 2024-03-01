@@ -13,7 +13,7 @@ use bitcoin::{
     Transaction, TxIn, TxOut, Txid, Witness,
 };
 use bitcoincore_rpc::{json::SignRawTransactionInput, Auth, Client as BitcoincoreClient, RpcApi};
-use electrum_client::{Client as ElectrumClient, ElectrumApi};
+use electrum_client::{Client as ElectrumClient, ElectrumApi, ListUnspentRes};
 use ethers::{types::H160, utils::keccak256};
 use ruc::*;
 
@@ -42,7 +42,7 @@ impl BtcTransactionBuilder {
             bitcoincore_client,
         })
     }
-    pub async fn get_eth_from_address(&self, txid: &Txid, vout: u32) -> Result<H160> {
+    pub fn get_eth_from_address(&self, txid: &Txid, vout: u32) -> Result<H160> {
         let script = self
             .bitcoincore_client
             .get_raw_transaction(txid, None)
@@ -56,19 +56,29 @@ impl BtcTransactionBuilder {
 
         let hash = if script.is_p2pk() || script.is_p2pkh() {
             let data = script.p2pk_public_key().c(d!())?.to_bytes();
-            keccak256(keccak256(data))
+            keccak256(keccak256(data)).to_vec()
         } else {
             let mut hasher = sha256::HashEngine::default();
-            let data = script.as_bytes().to_vec();
-            sha256::Hash::from_engine(hasher).to_byte_array()
+            script.script_hash().as_byte_array().to_vec()
         };
         Ok(H160::from_slice(&hash[0..20]))
     }
+
+    pub fn list_unspent(&self, address: &str) -> Result<Vec<ListUnspentRes>> {
+        let addr = Address::from_str(address)
+            .map(|addr| addr.assume_checked())
+            .c(d!())?;
+        self.electrum_client
+            .script_list_unspent(&addr.script_pubkey())
+            .c(d!())
+    }
+
     pub async fn build_transaction(
         &self,
         sk: &str,
         network: &str,
         address: &str,
+        unspents: Vec<ListUnspentRes>,
         eth_fee: u64,
         hash: &[u8; 40],
     ) -> Result<Txid> {
@@ -79,6 +89,7 @@ impl BtcTransactionBuilder {
         };
         let mut fee = Amount::from_sat(eth_fee);
         let relay_fee = Amount::from_btc(self.electrum_client.relay_fee().c(d!())?).c(d!())?;
+        log::info!("relay_fee:{:#?}", relay_fee);
         if fee < relay_fee {
             fee = relay_fee;
         }
@@ -90,11 +101,6 @@ impl BtcTransactionBuilder {
         let mut input = Vec::new();
         let mut sign_inputs = Vec::new();
         let mut sum_amount = Amount::ZERO;
-
-        let unspents = self
-            .electrum_client
-            .script_list_unspent(&addr.script_pubkey())
-            .c(d!())?;
 
         log::info!("unspent:{:#?}", unspents);
         for it in unspents.iter() {

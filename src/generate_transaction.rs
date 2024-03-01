@@ -65,8 +65,12 @@ async fn main() -> Result<()> {
         None => vec![],
     };
     let sig = cmd.sig.clone().unwrap_or(String::new());
+
+    let unspents = btc_builder.list_unspent(&cmd.address)?;
+    let tmp = unspents.first().c(d!())?;
+    let from = btc_builder.get_eth_from_address(&tmp.tx_hash, tmp.tx_pos as u32)?;
     let (eth_tx, fee) = eth_builder
-        .build_transaction(H160::default(), cmd.value, cmd.to, &data, &sig, cmd.args)
+        .build_transaction(from, cmd.value, cmd.to, &data, &sig, cmd.args)
         .await?;
     log::info!("etc transaction:{}", hex_encode(&eth_tx));
     let chain_id = eth_builder.chain_id().await?;
@@ -78,6 +82,7 @@ async fn main() -> Result<()> {
             &cmd.private_key,
             &cfg.network,
             &cmd.address,
+            unspents,
             fee,
             &vc.encode(),
         )

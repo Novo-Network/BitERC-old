@@ -74,8 +74,7 @@ impl FetcherService {
 
         let from = if let Some(txin) = btc_tx.input.first() {
             self.builder
-                .get_eth_from_address(&txin.previous_output.txid, txin.previous_output.vout)
-                .await?
+                .get_eth_from_address(&txin.previous_output.txid, txin.previous_output.vout)?
         } else {
             return Err(eg!("input not found"));
         };
