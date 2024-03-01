@@ -33,6 +33,7 @@ impl DAService for GreenfieldService {
             }
         }
         let key = hex::encode(&hash);
+        let _ = fs::remove_file(format!("/tmp/.{}.tmp", key));
         let value = hex::encode(tx);
         let file_name = format!("/tmp/{}", key);
         fs::write(&file_name, value)?;
@@ -65,6 +66,7 @@ impl DAService for GreenfieldService {
 
     async fn get_tx(&self, hash: &[u8]) -> Result<Vec<u8>> {
         let key = hex::encode(hash);
+        let _ = fs::remove_file(format!("/tmp/.{}.tmp", key));
         println!("get tx");
         let file_name = format!("/tmp/{}", key);
 
@@ -91,6 +93,7 @@ impl DAService for GreenfieldService {
         let content = hex::decode(file_content)?;
 
         let _ = fs::remove_file(file_name);
+        let _ = fs::remove_file(format!("/tmp/.{}.tmp", key));
         Ok(content)
     }
 

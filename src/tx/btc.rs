@@ -12,29 +12,39 @@ use bitcoin::{
     Address, Amount, EcdsaSighashType, Network, OutPoint, PrivateKey, ScriptBuf, Sequence,
     Transaction, TxIn, TxOut, Txid, Witness,
 };
-use bitcoincore_rpc::{json, Auth, Client, RpcApi};
+use bitcoincore_rpc::{json::SignRawTransactionInput, Auth, Client as BitcoincoreClient, RpcApi};
+use electrum_client::{Client as ElectrumClient, ElectrumApi};
 use ethers::{types::H160, utils::keccak256};
 use ruc::*;
 
 #[allow(unused)]
 pub struct BtcTransactionBuilder {
-    pub client: Client,
+    electrum_client: ElectrumClient,
+    pub bitcoincore_client: BitcoincoreClient,
 }
 
 #[allow(unused)]
 impl BtcTransactionBuilder {
-    pub async fn new(url: &str, username: &str, password: &str) -> Result<Self> {
-        let client = Client::new(
-            url,
+    pub async fn new(
+        electrs_url: &str,
+        btc_url: &str,
+        username: &str,
+        password: &str,
+    ) -> Result<Self> {
+        let electrum_client = ElectrumClient::new(electrs_url).c(d!())?;
+        let bitcoincore_client = BitcoincoreClient::new(
+            btc_url,
             Auth::UserPass(username.to_string(), password.to_string()),
         )
         .c(d!())?;
-
-        Ok(Self { client })
+        Ok(Self {
+            electrum_client,
+            bitcoincore_client,
+        })
     }
     pub async fn get_eth_from_address(&self, txid: &Txid, vout: u32) -> Result<H160> {
         let script = self
-            .client
+            .bitcoincore_client
             .get_raw_transaction(txid, None)
             .c(d!())
             .and_then(|tx| {
@@ -58,45 +68,57 @@ impl BtcTransactionBuilder {
         &self,
         sk: &str,
         network: &str,
-        fee: u64,
+        address: &str,
+        eth_fee: u64,
         hash: &[u8; 40],
-        txid: String,
-        vout: u32,
     ) -> Result<Txid> {
         let private_key = PrivateKey {
             compressed: true,
             network: Network::from_core_arg(network).c(d!())?,
             inner: SecretKey::from_str(sk.strip_prefix("0x").unwrap_or(sk)).c(d!())?,
         };
-        let fee = Amount::from_sat(fee);
+        let mut fee = Amount::from_sat(eth_fee);
+        let relay_fee = Amount::from_btc(self.electrum_client.relay_fee().c(d!())?).c(d!())?;
+        if fee < relay_fee {
+            fee = relay_fee;
+        }
         let secp: Secp256k1<All> = Secp256k1::new();
         let pk = private_key.public_key(&secp);
-        let addr = Address::p2wpkh(&pk, private_key.network).c(d!())?;
-        log::info!("btc from address: {}", addr);
+        let addr = Address::from_str(address)
+            .map(|addr| addr.assume_checked())
+            .c(d!())?;
         let mut input = Vec::new();
         let mut sign_inputs = Vec::new();
         let mut sum_amount = Amount::ZERO;
 
-        let txid = Txid::from_str(&txid).c(d!())?;
-        let unspent = self.client.get_tx_out(&txid, vout, None).c(d!())?.c(d!())?;
-        log::info!("unspent:{:#?}", unspent);
-        sum_amount += unspent.value;
-        let txin = TxIn {
-            previous_output: OutPoint { txid, vout },
-            sequence: Sequence::MAX,
-            script_sig: ScriptBuf::new(),
-            witness: Witness::new(),
-        };
-        input.push(txin);
-        let sign_input = json::SignRawTransactionInput {
-            txid,
-            vout,
-            script_pub_key: unspent.script_pub_key.script().c(d!())?,
-            redeem_script: None,
-            amount: Some(unspent.value),
-        };
+        let unspents = self
+            .electrum_client
+            .script_list_unspent(&addr.script_pubkey())
+            .c(d!())?;
 
-        sign_inputs.push(sign_input);
+        log::info!("unspent:{:#?}", unspents);
+        for it in unspents.iter() {
+            sum_amount += Amount::from_sat(it.value);
+            let txin = TxIn {
+                previous_output: OutPoint {
+                    txid: it.tx_hash,
+                    vout: it.tx_pos as u32,
+                },
+                sequence: Sequence::MAX,
+                script_sig: ScriptBuf::new(),
+                witness: Witness::new(),
+            };
+            input.push(txin);
+            let sign_input = SignRawTransactionInput {
+                txid: it.tx_hash,
+                vout: it.tx_pos as u32,
+                script_pub_key: addr.script_pubkey(),
+                redeem_script: None,
+                amount: Some(Amount::from_sat(it.value)),
+            };
+
+            sign_inputs.push(sign_input);
+        }
 
         if sum_amount <= fee {
             return Err(eg!("Insufficient balance"));
@@ -116,7 +138,7 @@ impl BtcTransactionBuilder {
                         .into_script(),
                 },
                 TxOut {
-                    value: (sum_amount - fee),
+                    value: sum_amount - fee,
                     script_pubkey: addr.script_pubkey(),
                 },
             ],
@@ -152,6 +174,6 @@ impl BtcTransactionBuilder {
         // Get the signed transaction.
         let tx = sighasher.into_transaction().clone();
         log::info!("btc tx:{:#?}", tx);
-        self.client.send_raw_transaction(&tx).c(d!())
+        self.bitcoincore_client.send_raw_transaction(&tx).c(d!())
     }
 }

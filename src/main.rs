@@ -81,6 +81,7 @@ impl Args {
             .await
             .c(d!())?;
         let mut fetcher = FetcherService::new(
+            &cfg.electrs_url,
             &cfg.btc_url,
             &cfg.username,
             &cfg.password,
@@ -95,11 +96,9 @@ impl Args {
                 for btc_tx in block.txdata.iter() {
                     match fetcher.decode_transaction(btc_tx).await {
                         Ok(evm_txs) => {
-                            if !evm_txs.is_empty() {
-                                for i in evm_txs.iter() {
-                                    if evm_rt.check_signed_tx(i).is_ok() {
-                                        txs.push(i.clone());
-                                    }
+                            for i in evm_txs.iter() {
+                                if evm_rt.check_signed_tx(i).is_ok() {
+                                    txs.push(i.clone());
                                 }
                             }
                         }

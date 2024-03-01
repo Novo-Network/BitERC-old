@@ -4,11 +4,10 @@ set -xe
 export RUST_LOG=info
 export RUST_BACKTRACE=full
 
-cargo r --bin novolite -- \
+cargo r --release --bin generate_transaction -- \
   --config=./config.toml \
-  --txid="92f6ee7277b21ad562a7c79a217f4b2540a8df8cd40b09e5ae3b9ce8fbea9f95" \
-  --vout=1 \
   --private-key="0x24e196d2883a86132d43f793dd6ffd0c11a456afba1c1c3180674b6f0624cace" \
+  --address="bcrt1qhwkqamxr93phyhlc82elqm2n8hufr8xls0djwn" \
   --value=0 \
   --to="0xaB1B7b213bFf477d73D34455774e3973Db8E6682" \
   "store(uint256 num)" 10

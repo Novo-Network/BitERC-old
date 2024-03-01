@@ -20,11 +20,11 @@ pub struct Config {
     pub greenfield_password_file: Option<String>,
     pub default: String,
 
+    pub electrs_url: String,
     pub btc_url: String,
     pub username: String,
     pub password: String,
     pub network: String,
-    pub fee: u64,
 
     pub eth_url: String,
     pub chain_id: u32,

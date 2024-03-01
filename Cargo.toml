@@ -5,7 +5,7 @@ members = [
 resolver = "2"
 
 [package]
-name = "novolited"
+name = "biterc"
 version = "0.1.0"
 edition = "2021"
 authors = []
@@ -13,28 +13,27 @@ license = "GPLv3"
 build = "build.rs"
 
 [[bin]]
-name = "novolite"
-path = "src/novolite.rs"
+name = "generate_transaction"
+path = "src/generate_transaction.rs"
 
 [dependencies]
+da = { path = "da" }
+
 env_logger = "0.10.0"
 log = "0.4.20"
-
-da = { path = "da" }
 
 tokio = { version = "1.26", features = ["full"] }
 clap = { version = "4.0", features = ["derive"] }
 ruc = { version = "5.0.10", features = ["crypto", "cmd", "ssh"] }
 serde = { version = "1.0", features = ["derive"] }
-once_cell = "1.17.1"
 toml = "0.7.6"
 
 vsdb = { version = "0.62.0", default-features = false, features = ["rocks_backend","extra_types"] }
-bcs = "0.1.5"
 
 bitcoin = "0.31.1"
 bitcoincore-rpc = "0.18.0"
- 
+electrum-client = "0.19.0"
+
 ethers = { version = "2.0.13", features = ["optimism"] }
 
 rt-evm = { git = "ssh://git@github.com.novo/Novo-Network/rt-evm.git"}

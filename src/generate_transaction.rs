@@ -4,9 +4,6 @@ mod config;
 mod tx;
 mod vout_code;
 
-use std::str::FromStr;
-
-use bitcoin::Txid;
 use clap::Parser;
 use da::create_da_mgr;
 
@@ -25,9 +22,7 @@ pub struct CommandLine {
     #[clap(long)]
     pub private_key: String,
     #[clap(long)]
-    pub txid: String,
-    #[clap(long)]
-    pub vout: u32,
+    pub address: String,
     #[clap(long)]
     pub to: Option<H160>,
     #[clap(long)]
@@ -62,22 +57,18 @@ async fn main() -> Result<()> {
     .await
     .map_err(|e| eg!(e))?;
     let btc_builder =
-        BtcTransactionBuilder::new(&cfg.btc_url, &cfg.username, &cfg.password).await?;
-    let txid = Txid::from_str(&cmd.txid).c(d!())?;
-    let from = btc_builder.get_eth_from_address(&txid, cmd.vout).await?;
+        BtcTransactionBuilder::new(&cfg.electrs_url, &cfg.btc_url, &cfg.username, &cfg.password)
+            .await?;
     let eth_builder = EthTransactionBuilder::new(&cfg.eth_url, &cmd.private_key).await?;
     let data = match cmd.data {
         Some(v) => hex_decode(v.strip_prefix("0x").unwrap_or(&v)).c(d!())?,
         None => vec![],
     };
     let sig = cmd.sig.clone().unwrap_or(String::new());
-    let (eth_tx, mut fee) = eth_builder
-        .build_transaction(from, cmd.value, cmd.to, &data, &sig, cmd.args)
+    let (eth_tx, fee) = eth_builder
+        .build_transaction(H160::default(), cmd.value, cmd.to, &data, &sig, cmd.args)
         .await?;
     log::info!("etc transaction:{}", hex_encode(&eth_tx));
-    if fee < cfg.fee {
-        fee = 2000;
-    }
     let chain_id = eth_builder.chain_id().await?;
     let hash = da_mgr.set_tx(&eth_tx).await.map_err(|e| eg!(e))?;
     let vc = VoutCode::new(chain_id, 0, da_mgr.default_type(), 0, &hash[1..])?;
@@ -86,10 +77,9 @@ async fn main() -> Result<()> {
         .build_transaction(
             &cmd.private_key,
             &cfg.network,
+            &cmd.address,
             fee,
             &vc.encode(),
-            cmd.txid,
-            cmd.vout,
         )
         .await?;
     println!("bitcoin transaction: {}", txid);

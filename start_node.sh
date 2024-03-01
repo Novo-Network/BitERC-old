@@ -1,9 +1,9 @@
 #!/bin/bash
 set -xe
-export RUST_LOG=debug
+export RUST_LOG=info
 export RUST_BACKTRACE=full
 
-cargo r --bin novolited -- \
+cargo r --release --bin biterc -- \
   --config=./config.toml \
   --datadir="./data" \
   --listen="0.0.0.0" \
