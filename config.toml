@@ -19,5 +19,4 @@ username = "admin1"
 password = "123"
 network = "regtest"
 
-eth_url = "http://127.0.0.1:8545"
 chain_id = 65535

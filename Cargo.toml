@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "da",
+    "services",
 ]
 resolver = "2"
 
@@ -18,6 +19,7 @@ path = "src/generate_transaction.rs"
 
 [dependencies]
 da = { path = "da" }
+services = { path = "services" }
 
 env_logger = "0.10.0"
 log = "0.4.20"
@@ -27,6 +29,7 @@ clap = { version = "4.0", features = ["derive"] }
 ruc = { version = "5.0.10", features = ["crypto", "cmd", "ssh"] }
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.7.6"
+async-trait = "0.1.72"
 
 vsdb = { version = "0.62.0", default-features = false, features = ["rocks_backend","extra_types"] }
 

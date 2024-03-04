@@ -4,13 +4,11 @@ use ethers::{
     providers::{Http, Middleware, Provider},
     types::{
         transaction::{eip2718::TypedTransaction, optimism::DepositTransaction},
-        Bytes, TransactionRequest, H160, H256, U256,
+        TransactionRequest, H160, H256, U256,
     },
     utils::hex,
 };
 use ruc::*;
-
-use super::SAT2WEI;
 
 #[allow(unused)]
 pub struct EthTransactionBuilder {
@@ -35,7 +33,7 @@ impl EthTransactionBuilder {
         data: &[u8],
         sig: &str,
         args: Vec<String>,
-    ) -> Result<(Bytes, u64)> {
+    ) -> Result<TypedTransaction> {
         let mut tx = TransactionRequest::new().value(value).from(from);
         log::info!("eth from address: {:?}", from);
         if let Some(to) = to {
@@ -73,13 +71,6 @@ impl EthTransactionBuilder {
             .fill_transaction(&mut tx, None)
             .await
             .c(d!())?;
-        Ok((
-            tx.rlp(),
-            tx.gas()
-                .c(d!())?
-                .checked_div(U256::from(SAT2WEI))
-                .c(d!())?
-                .as_u64(),
-        ))
+        Ok(tx)
     }
 }

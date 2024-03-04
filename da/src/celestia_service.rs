@@ -1,15 +1,31 @@
-use std::sync::Arc;
-
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use celestia_rpc::{BlobClient, Client};
-use celestia_types::{blob::SubmitOptions, consts::HASH_SIZE, nmt::Namespace, Blob, Commitment};
+use celestia_types::{
+    blob::SubmitOptions,
+    consts::HASH_SIZE,
+    nmt::{Namespace, NS_ID_V0_SIZE},
+    Blob, Commitment,
+};
 
-use crate::service::DAService;
+use crate::{service::DAService, DaType};
 
 pub struct CelestiaService {
-    pub client: Arc<Client>,
-    pub namespace: Namespace,
+    client: Client,
+    namespace: Namespace,
+}
+
+impl CelestiaService {
+    pub async fn new(
+        url: &str,
+        auth_token: Option<&str>,
+        namespace_id: [u8; NS_ID_V0_SIZE],
+    ) -> Result<Self> {
+        Ok(Self {
+            client: Client::new(url, auth_token).await?,
+            namespace: Namespace::const_v0(namespace_id),
+        })
+    }
 }
 
 #[async_trait]
@@ -41,6 +57,6 @@ impl DAService for CelestiaService {
     }
 
     fn type_byte(&self) -> u8 {
-        0x02
+        DaType::Celestia.type_byte()
     }
 }

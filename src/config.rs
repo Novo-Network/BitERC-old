@@ -26,7 +26,6 @@ pub struct Config {
     pub password: String,
     pub network: String,
 
-    pub eth_url: String,
     pub chain_id: u32,
 }
 

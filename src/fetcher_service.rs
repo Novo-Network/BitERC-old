@@ -5,7 +5,7 @@ use bitcoin::{
     opcodes::all::{OP_PUSHBYTES_40, OP_RETURN},
     Block, Transaction, TxOut,
 };
-use bitcoincore_rpc::RpcApi;
+use bitcoincore_rpc::{Client, RpcApi};
 use da::DAServiceManager;
 use rt_evm::model::{
     codec::{hex_encode, ProtocolCodec},
@@ -23,20 +23,19 @@ pub struct FetcherService {
     builder: BtcTransactionBuilder,
     chain_id: u32,
     da_mgr: Arc<DAServiceManager>,
+    client: Arc<Client>,
 }
 
 impl FetcherService {
     pub async fn new(
         electrs_url: &str,
-        btc_url: &str,
-        username: &str,
-        password: &str,
+        client: Arc<Client>,
         start: u64,
         chain_id: u32,
         da_mgr: Arc<DAServiceManager>,
     ) -> Result<Self> {
-        let builder = BtcTransactionBuilder::new(electrs_url, btc_url, username, password).await?;
-        let block_cnt = builder.bitcoincore_client.get_block_count().c(d!())?;
+        let builder = BtcTransactionBuilder::new(electrs_url, client.clone()).await?;
+        let block_cnt = client.clone().get_block_count().c(d!())?;
         if start > block_cnt + 1 {
             return Err(eg!("The starting height is greater than the chain height"));
         }
@@ -46,19 +45,16 @@ impl FetcherService {
             builder,
             chain_id,
             da_mgr,
+            client,
         })
     }
     pub async fn get_block(&mut self) -> Result<Option<Block>> {
-        let block_cnt = self.builder.bitcoincore_client.get_block_count().c(d!())?;
+        let block_cnt = self.client.get_block_count().c(d!())?;
         if self.height > block_cnt {
             return Ok(None);
         }
-        let hash = self
-            .builder
-            .bitcoincore_client
-            .get_block_hash(self.height)
-            .c(d!())?;
-        let block = self.builder.bitcoincore_client.get_block(&hash).c(d!())?;
+        let hash = self.client.get_block_hash(self.height).c(d!())?;
+        let block = self.client.get_block(&hash).c(d!())?;
         log::info!(
             "get {} block:{},{:#?}",
             self.height,
@@ -83,8 +79,7 @@ impl FetcherService {
             .input
             .iter()
             .map(|txin| {
-                self.builder
-                    .bitcoincore_client
+                self.client
                     .get_raw_transaction(&txin.previous_output.txid, None)
                     .c(d!())
                     .and_then(|tx| {

@@ -6,6 +6,8 @@ export RUST_BACKTRACE=full
 
 cargo r --release --bin generate_transaction -- \
   --config=./config.toml \
+  --eth-url="http://127.0.0.1:8545" \
+  --send-tx-url="http://127.0.0.1:8544" \
   --private-key="0x24e196d2883a86132d43f793dd6ffd0c11a456afba1c1c3180674b6f0624cace" \
   --address="bcrt1qhwkqamxr93phyhlc82elqm2n8hufr8xls0djwn" \
   --value=0 \

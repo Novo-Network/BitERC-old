@@ -2,15 +2,18 @@
 
 mod config;
 mod fetcher_service;
+mod handle;
 mod tx;
 mod vout_code;
 
-use std::{sync::Arc, time::Duration};
+use std::{net::SocketAddr, str::FromStr, sync::Arc, time::Duration};
 
+use bitcoincore_rpc::{Auth, Client};
 use clap::Parser;
 use config::Config;
-use da::create_da_mgr;
+use da::{create_da_mgr, DaType};
 use fetcher_service::FetcherService;
+use handle::ApiHandle;
 use rt_evm::{
     model::{traits::BlockStorage, types::H160},
     EvmRuntime,
@@ -27,6 +30,8 @@ pub struct Args {
     #[clap(long)]
     listen: String,
     #[clap(long)]
+    api_port: u16,
+    #[clap(long)]
     http_port: u16,
     #[clap(long)]
     ws_port: u16,
@@ -35,24 +40,26 @@ pub struct Args {
 impl Args {
     pub async fn execute(self) -> Result<()> {
         let cfg = Config::new(&self.config)?;
-        let da_mgr = create_da_mgr(
-            cfg.file,
-            cfg.file_path.as_deref(),
-            cfg.ipfs,
-            cfg.ipfs_url.as_deref(),
-            cfg.celestia,
-            cfg.celestia_url.as_deref(),
-            cfg.celestia_token.as_deref(),
-            cfg.celestia_namespace_id.as_deref(),
-            cfg.greenfield,
-            cfg.greenfield_rpc_addr.as_deref(),
-            cfg.greenfield_chain_id.as_deref(),
-            cfg.greenfield_bucket.as_deref(),
-            cfg.greenfield_password_file.as_deref(),
-            &cfg.default,
-        )
-        .await
-        .map_err(|e| eg!(e))?;
+        let da_mgr = Arc::new(
+            create_da_mgr(
+                cfg.file,
+                cfg.file_path.as_deref(),
+                cfg.ipfs,
+                cfg.ipfs_url.as_deref(),
+                cfg.celestia,
+                cfg.celestia_url.as_deref(),
+                cfg.celestia_token.as_deref(),
+                cfg.celestia_namespace_id.as_deref(),
+                cfg.greenfield,
+                cfg.greenfield_rpc_addr.as_deref(),
+                cfg.greenfield_chain_id.as_deref(),
+                cfg.greenfield_bucket.as_deref(),
+                cfg.greenfield_password_file.as_deref(),
+                DaType::from_str(&cfg.default).map_err(|e| eg!(e))?,
+            )
+            .await
+            .map_err(|e| eg!(e))?,
+        );
 
         vsdb::vsdb_set_base_dir(&self.datadir).c(d!())?;
 
@@ -80,16 +87,24 @@ impl Args {
             )
             .await
             .c(d!())?;
-        let mut fetcher = FetcherService::new(
-            &cfg.electrs_url,
-            &cfg.btc_url,
-            &cfg.username,
-            &cfg.password,
-            start + 1,
-            cfg.chain_id,
-            Arc::new(da_mgr),
-        )
-        .await?;
+        let client = Arc::new(
+            Client::new(
+                &cfg.btc_url,
+                Auth::UserPass(cfg.username.clone(), cfg.password.clone()),
+            )
+            .c(d!())?,
+        );
+        let handle = ApiHandle::new(da_mgr.clone(), client.to_owned())?;
+        let addr: SocketAddr = format!("{}:{}", self.listen, self.api_port)
+            .parse()
+            .map_err(|e| eg!(e))?;
+        tokio::spawn(async move {
+            if let Err(e) = services::jsonrpc::serve(&addr, handle).await {
+                log::error!("api server execute error:{}", e);
+            }
+        });
+        let mut fetcher =
+            FetcherService::new(&cfg.electrs_url, client, start + 1, cfg.chain_id, da_mgr).await?;
         loop {
             if let Ok(Some(block)) = fetcher.get_block().await {
                 let mut txs = vec![];

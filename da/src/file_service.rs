@@ -1,27 +1,31 @@
 use std::{fs, path::PathBuf};
 
-use anyhow::Result;
+use anyhow::{Ok, Result};
 use async_trait::async_trait;
 use sha3::{Digest, Keccak256};
 
-use crate::service::DAService;
+use crate::{service::DAService, DaType};
 
 pub struct FileService {
     storage_path: PathBuf,
 }
 impl FileService {
-    pub fn new(storage_path: PathBuf) -> Result<Self> {
+    pub fn new(storage_path: impl Into<PathBuf>) -> Result<Self> {
+        let storage_path: PathBuf = storage_path.into();
         if !storage_path.exists() {
             fs::create_dir_all(&storage_path)?;
         }
         Ok(Self { storage_path })
+    }
+    pub fn hash(tx: &[u8]) -> Vec<u8> {
+        Keccak256::digest(tx).to_vec()
     }
 }
 
 #[async_trait]
 impl DAService for FileService {
     async fn set_full_tx(&self, tx: &[u8]) -> Result<Vec<u8>> {
-        let hash = Keccak256::digest(tx).to_vec();
+        let hash = Self::hash(tx);
         let key = hex::encode(&hash);
         let path = self.storage_path.join(key);
         let value = hex::encode(tx);
@@ -46,6 +50,6 @@ impl DAService for FileService {
     }
 
     fn type_byte(&self) -> u8 {
-        0x00
+        DaType::File.type_byte()
     }
 }

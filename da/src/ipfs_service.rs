@@ -1,16 +1,23 @@
-use std::{io::Cursor, sync::Arc};
+use std::io::Cursor;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use base58::{FromBase58, ToBase58};
 use futures::TryStreamExt;
-use ipfs_api::{IpfsApi, IpfsClient};
+use ipfs_api::{IpfsApi, IpfsClient, TryFromUri};
 use ipfs_api_backend_hyper as _;
 
-use crate::service::DAService;
+use crate::{service::DAService, DaType};
 
 pub struct IpfsService {
-    pub ipfs: Arc<IpfsClient>,
+    ipfs: IpfsClient,
+}
+impl IpfsService {
+    pub fn new(url: &str) -> Result<Self> {
+        Ok(Self {
+            ipfs: IpfsClient::from_str(url)?,
+        })
+    }
 }
 
 #[async_trait]
@@ -40,6 +47,6 @@ impl DAService for IpfsService {
     }
 
     fn type_byte(&self) -> u8 {
-        0x01
+        DaType::Ipfs.type_byte()
     }
 }

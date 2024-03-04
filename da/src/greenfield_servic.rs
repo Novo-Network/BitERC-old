@@ -4,7 +4,7 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use sha3::{Digest, Keccak256};
 
-use crate::service::DAService;
+use crate::{service::DAService, DaType};
 
 pub struct GreenfieldService {
     rpc_addr: String,
@@ -21,12 +21,16 @@ impl GreenfieldService {
             password_file,
         }
     }
+
+    pub fn hash(tx: &[u8]) -> Vec<u8> {
+        Keccak256::digest(tx).to_vec()
+    }
 }
 
 #[async_trait]
 impl DAService for GreenfieldService {
     async fn set_full_tx(&self, tx: &[u8]) -> Result<Vec<u8>> {
-        let hash = Keccak256::digest(tx).to_vec();
+        let hash = Self::hash(tx);
         if let Ok(content) = self.get_tx(&hash).await {
             if !content.is_empty() {
                 return Ok(hash);
@@ -98,6 +102,6 @@ impl DAService for GreenfieldService {
     }
 
     fn type_byte(&self) -> u8 {
-        0x03
+        DaType::Greenfield.type_byte()
     }
 }

@@ -15,12 +15,35 @@ pub use celestia_service::*;
 mod greenfield_servic;
 pub use greenfield_servic::*;
 
-use std::{path::PathBuf, sync::Arc};
+use std::str::FromStr;
 
-use anyhow::{anyhow, Result};
-use celestia_rpc::Client;
-use celestia_types::nmt::Namespace;
-use ipfs_api_backend_hyper::{IpfsClient, TryFromUri};
+use anyhow::{anyhow, Error, Result};
+
+#[derive(Clone, Eq, PartialEq)]
+pub enum DaType {
+    File,
+    Ipfs,
+    Celestia,
+    Greenfield,
+}
+impl DaType {
+    pub fn type_byte(&self) -> u8 {
+        self.clone() as u8
+    }
+}
+impl FromStr for DaType {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "file" => Ok(Self::File),
+            "ipfs" => Ok(DaType::Ipfs),
+            "celestia" => Ok(DaType::Celestia),
+            "greenfield" => Ok(DaType::Greenfield),
+            &_ => Err(anyhow!("default can only be file ipfs celestia")),
+        }
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub async fn create_da_mgr(
@@ -37,45 +60,36 @@ pub async fn create_da_mgr(
     greenfield_chain_id: Option<&str>,
     greenfield_bucket: Option<&str>,
     greenfield_password_file: Option<&str>,
-    default: &str,
+    default: DaType,
 ) -> Result<DAServiceManager> {
-    let flag = match default {
-        "file" => {
-            if file {
-                0
-            } else {
+    match default {
+        DaType::File => {
+            if !file {
                 return Err(anyhow!("file flag not enabled"));
             }
         }
-        "ipfs" => {
-            if ipfs {
-                1
-            } else {
+        DaType::Ipfs => {
+            if !ipfs {
                 return Err(anyhow!("ipfs flag not enabled"));
             }
         }
-        "celestia" => {
-            if celestia {
-                2
-            } else {
+        DaType::Celestia => {
+            if !celestia {
                 return Err(anyhow!("celestia flag not enabled"));
             }
         }
-        "greenfield" => {
-            if greenfield {
-                3
-            } else {
+        DaType::Greenfield => {
+            if !greenfield {
                 return Err(anyhow!("celestia flag not enabled"));
             }
         }
-        &_ => return Err(anyhow!("default can only be file ipfs celestia")),
-    };
+    }
 
     let mut da_mgr = DAServiceManager::new();
     if file {
         let file_path = file_path.ok_or(anyhow!("file path can not be empty"))?;
-        let file_service = FileService::new(PathBuf::from(file_path))?;
-        if 0 == flag {
+        let file_service = FileService::new(file_path)?;
+        if DaType::File == default {
             da_mgr.add_default_service(file_service);
         } else {
             da_mgr.add_service(file_service);
@@ -84,10 +98,8 @@ pub async fn create_da_mgr(
 
     if ipfs {
         let ipfs_url = ipfs_url.ok_or(anyhow!("ipfs url can not be empty"))?;
-        let ipfs_service = IpfsService {
-            ipfs: Arc::new(IpfsClient::from_str(ipfs_url)?),
-        };
-        if 1 == flag {
+        let ipfs_service = IpfsService::new(ipfs_url)?;
+        if DaType::Ipfs == default {
             da_mgr.add_default_service(ipfs_service);
         } else {
             da_mgr.add_service(ipfs_service);
@@ -103,11 +115,9 @@ pub async fn create_da_mgr(
                 v.try_into()
                     .map_err(|_e| anyhow!("namespace try into error"))
             })?;
-        let celestia_service = CelestiaService {
-            client: Arc::new(Client::new(celestia_url, celestia_token).await?),
-            namespace: Namespace::const_v0(namespace_id),
-        };
-        if 2 == flag {
+        let celestia_service =
+            CelestiaService::new(celestia_url, celestia_token, namespace_id).await?;
+        if DaType::Celestia == default {
             da_mgr.add_default_service(celestia_service);
         } else {
             da_mgr.add_service(celestia_service);
@@ -129,7 +139,7 @@ pub async fn create_da_mgr(
             bucket.into(),
             password_file.into(),
         );
-        if 3 == flag {
+        if DaType::Greenfield == default {
             da_mgr.add_default_service(greenfield_service);
         } else {
             da_mgr.add_service(greenfield_service);

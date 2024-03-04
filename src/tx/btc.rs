@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 
 use bitcoin::{
     absolute::LockTime,
@@ -12,7 +12,7 @@ use bitcoin::{
     Address, Amount, EcdsaSighashType, Network, OutPoint, PrivateKey, ScriptBuf, Sequence,
     Transaction, TxIn, TxOut, Txid, Witness,
 };
-use bitcoincore_rpc::{json::SignRawTransactionInput, Auth, Client as BitcoincoreClient, RpcApi};
+use bitcoincore_rpc::{json::SignRawTransactionInput, Client as BitcoincoreClient, RpcApi};
 use electrum_client::{Client as ElectrumClient, ElectrumApi, ListUnspentRes};
 use ethers::{types::H160, utils::keccak256};
 use ruc::*;
@@ -20,23 +20,17 @@ use ruc::*;
 #[allow(unused)]
 pub struct BtcTransactionBuilder {
     electrum_client: ElectrumClient,
-    pub bitcoincore_client: BitcoincoreClient,
+    bitcoincore_client: Arc<BitcoincoreClient>,
 }
 
 #[allow(unused)]
 impl BtcTransactionBuilder {
     pub async fn new(
         electrs_url: &str,
-        btc_url: &str,
-        username: &str,
-        password: &str,
+        bitcoincore_client: Arc<BitcoincoreClient>,
     ) -> Result<Self> {
         let electrum_client = ElectrumClient::new(electrs_url).c(d!())?;
-        let bitcoincore_client = BitcoincoreClient::new(
-            btc_url,
-            Auth::UserPass(username.to_string(), password.to_string()),
-        )
-        .c(d!())?;
+
         Ok(Self {
             electrum_client,
             bitcoincore_client,
@@ -81,7 +75,7 @@ impl BtcTransactionBuilder {
         unspents: Vec<ListUnspentRes>,
         eth_fee: u64,
         hash: &[u8; 40],
-    ) -> Result<Txid> {
+    ) -> Result<Transaction> {
         let private_key = PrivateKey {
             compressed: true,
             network: Network::from_core_arg(network).c(d!())?,
@@ -178,8 +172,6 @@ impl BtcTransactionBuilder {
         *sighasher.witness_mut(0).unwrap() = Witness::p2wpkh(&signature, &pk.inner);
 
         // Get the signed transaction.
-        let tx = sighasher.into_transaction().clone();
-        log::info!("btc tx:{:#?}", tx);
-        self.bitcoincore_client.send_raw_transaction(&tx).c(d!())
+        Ok(sighasher.into_transaction().clone())
     }
 }
