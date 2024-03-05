@@ -1,0 +1,22 @@
+[package]
+name = "fetcher"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = { workspace = true }
+log = { workspace = true }
+
+hex = { workspace = true }
+
+utils = { workspace = true }
+da = { workspace = true }
+tx_builder = { workspace = true }
+
+bitcoin = { workspace = true }
+bitcoincore-rpc = { workspace = true }
+
+ethers = { workspace = true }
+rt-evm = { workspace = true }

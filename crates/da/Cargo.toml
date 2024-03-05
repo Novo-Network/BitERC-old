@@ -1,0 +1,23 @@
+[package]
+name = "da"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ipfs-api-backend-hyper = { version = "0.6.0", features = ["with-send-sync"] }
+ipfs-api = { version = "0.17.0", features = ["with-hyper-rustls"], default-features = false }
+
+celestia-rpc = { git = "https://github.com/eigerco/celestia-node-rs.git" }
+celestia-types = { git = "https://github.com/eigerco/celestia-node-rs.git" }
+
+sha3 = "0.10"
+futures = "0.3"
+base58 = "0.2.0"
+
+anyhow = { workspace = true }
+hex = { workspace = true }
+serde = { workspace = true }
+
+async-trait = { workspace = true }
