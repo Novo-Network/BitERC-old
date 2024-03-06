@@ -7,18 +7,21 @@ use bitcoin::{
     Block, Transaction, TxOut,
 };
 use bitcoincore_rpc::{Client, RpcApi};
+use config::ChainConfig;
 use da::DAServiceManager;
-use rt_evm::model::{
-    codec::ProtocolCodec,
-    types::{SignedTransaction, UnsignedTransaction, UnverifiedTransaction, H160, H256, U256},
-};
+use ethers::utils::rlp::Rlp;
+use rt_evm::model::types::{DepositTransaction, SignedTransaction, H160, H256, U256};
 use tx_builder::{btc::BtcTransactionBuilder, SAT2WEI};
 use utils::ScriptCode;
 
+pub enum Data {
+    Config(ChainConfig),
+    Transaction(SignedTransaction),
+}
 pub struct Fetcher {
     height: u64,
     builder: BtcTransactionBuilder,
-    chain_id: u32,
+    pub chain_id: u32,
     da_mgr: Arc<DAServiceManager>,
     client: Arc<Client>,
 }
@@ -47,7 +50,36 @@ impl Fetcher {
         })
     }
 
-    pub async fn get_block(&mut self) -> Result<Option<Block>> {
+    pub async fn fetcher_first_cfg(&mut self) -> Result<(u64, ChainConfig)> {
+        loop {
+            if let Some((_, datas)) = self.fetcher().await? {
+                for data in datas {
+                    if let Data::Config(cfg) = data {
+                        return Ok((self.height, cfg));
+                    }
+                }
+            }
+        }
+    }
+
+    pub async fn fetcher(&mut self) -> Result<Option<(u64, Vec<Data>)>> {
+        let block = if let Some(block) = self.get_block().await? {
+            block
+        } else {
+            return Ok(None);
+        };
+        self.height += 1;
+
+        let mut ret = vec![];
+        for tx in block.txdata.iter() {
+            if let Some(datas) = self.decode_data(tx).await? {
+                ret.extend(datas);
+            };
+        }
+        Ok(Some((block.header.time.into(), ret)))
+    }
+
+    async fn get_block(&self) -> Result<Option<Block>> {
         let block_cnt = self.client.get_block_count()?;
         if self.height > block_cnt {
             return Ok(None);
@@ -62,11 +94,10 @@ impl Fetcher {
             block
         );
 
-        self.height += 1;
         Ok(Some(block))
     }
 
-    fn verify_transaction(&self, btc_tx: &Transaction) -> Result<u64> {
+    fn verify_transaction(&self, btc_tx: &Transaction) -> Result<Option<u64>> {
         if btc_tx.input.is_empty() {
             return Err(anyhow!("tx input is empty"));
         }
@@ -92,44 +123,49 @@ impl Fetcher {
             .sum::<u64>();
 
         if input_amount > output_amuont {
-            Ok(input_amount - output_amuont)
+            Ok(Some(input_amount - output_amuont))
         } else {
-            Err(anyhow!("Input amount does not match output amount"))
+            Ok(None)
         }
     }
 
-    pub async fn decode_transaction(&self, btc_tx: &Transaction) -> Result<Vec<SignedTransaction>> {
+    async fn decode_data(&self, btc_tx: &Transaction) -> Result<Option<Vec<Data>>> {
         let source_hash = H256::from(btc_tx.txid().to_byte_array());
+
         let from = if let Some(txin) = btc_tx.input.first() {
             self.builder
                 .get_eth_from_address(&txin.previous_output.txid, txin.previous_output.vout)?
         } else {
             return Err(anyhow!("input not found"));
         };
-        let fee = U256::from(self.verify_transaction(btc_tx)?);
 
         let mut ret = vec![];
+        let fee = U256::from(match self.verify_transaction(btc_tx)? {
+            Some(v) => v,
+            None => return Ok(None),
+        });
+
         for (index, out) in btc_tx.output.iter().enumerate() {
-            match self.decode_vout(out, source_hash, from).await {
-                Ok(tx) => {
-                    if fee >= (tx.transaction.unsigned.gas_limit() / U256::from(SAT2WEI)) {
-                        ret.push(tx)
-                    };
-                }
+            let data = match self.decode_vout(out, source_hash, from).await {
+                Ok(data) => data,
                 Err(e) => {
                     log::debug!("decode {} vout {} error:{}", btc_tx.txid(), index, e);
+                    continue;
                 }
+            };
+            if let Data::Transaction(ref tx) = data {
+                if fee >= (tx.transaction.unsigned.gas_limit() / U256::from(SAT2WEI)) {
+                    ret.push(data)
+                };
+            } else {
+                ret.push(data)
             }
         }
-        Ok(ret)
+
+        Ok(Some(ret))
     }
 
-    async fn decode_vout(
-        &self,
-        out: &TxOut,
-        source_hash: H256,
-        sender: H160,
-    ) -> Result<SignedTransaction> {
+    async fn decode_vout(&self, out: &TxOut, source_hash: H256, sender: H160) -> Result<Data> {
         let code = out.script_pubkey.as_bytes();
         if code.len() != 42
             || Some(OP_RETURN) != code.first().cloned().map(From::from)
@@ -148,24 +184,27 @@ impl Fetcher {
 
         let da_hash = vc.da_hash();
         log::debug!("da hash:{}", hex::encode(&da_hash));
+
         let tx_data = self.da_mgr.get_tx(da_hash).await.map_err(|e| anyhow!(e))?;
         log::debug!("tx_data:{}", hex::encode(&tx_data));
-        let mut transaction =
-            UnverifiedTransaction::decode(&tx_data).map_err(|e| anyhow!(e.to_string()))?;
 
-        if let UnsignedTransaction::Deposit(ref mut tx) = transaction.unsigned {
-            tx.source_hash = source_hash;
-            tx.from = sender;
-        };
+        if vc.tx_type == 0 {
+            if Some(0x7e) != tx_data.first().copied() {
+                return Err(anyhow!("not a deposit transaction"));
+            }
+            let mut deposit_tx = DepositTransaction::decode(&Rlp::new(&tx_data[1..]))?;
+            deposit_tx.from = sender;
+            deposit_tx.source_hash = source_hash;
 
-        transaction.chain_id = self.chain_id.into();
-        transaction.hash = transaction.get_hash();
-
-        let tx = SignedTransaction {
-            transaction,
-            sender,
-            public: None,
-        };
-        Ok(tx)
+            let tx = SignedTransaction::from_deposit_tx(deposit_tx, self.chain_id.into());
+            log::info!("transaction:{:#?}", tx);
+            Ok(Data::Transaction(tx))
+        } else if vc.tx_type == 1 {
+            let cfg = serde_json::from_slice(&tx_data)?;
+            log::info!("chain config:{:#?}", cfg);
+            Ok(Data::Config(cfg))
+        } else {
+            Err(anyhow!("tx type error"))
+        }
     }
 }

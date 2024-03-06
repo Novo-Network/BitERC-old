@@ -14,11 +14,6 @@ pub struct BtcConfig {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct NodeConfig {
-    pub chain_id: u32,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
     pub default_da: DaType,
 
@@ -28,7 +23,6 @@ pub struct Config {
     pub greenfield: Option<GreenfieldConfig>,
 
     pub btc: BtcConfig,
-    pub node: NodeConfig,
 }
 
 impl Config {
