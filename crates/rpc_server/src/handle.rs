@@ -11,11 +11,16 @@ use serde::{Deserialize, Serialize};
 pub struct ApiHandle {
     da_mgr: Arc<DAServiceManager>,
     client: Arc<Client>,
+    da_fee: u64,
 }
 
 impl ApiHandle {
-    pub fn new(da_mgr: Arc<DAServiceManager>, client: Arc<Client>) -> Self {
-        Self { da_mgr, client }
+    pub fn new(da_mgr: Arc<DAServiceManager>, client: Arc<Client>, da_fee: u64) -> Self {
+        Self {
+            da_mgr,
+            client,
+            da_fee,
+        }
     }
 }
 
@@ -23,13 +28,14 @@ impl ApiHandle {
 #[serde(untagged)]
 pub enum ApiHandleRequest {
     SendRawTransaction((Bytes, Bytes)),
+    GetDaFee,
 }
 macro_rules! define_into {
     ($func: ident, $ret: ty, $e: ident) => {
         pub fn $func(self) -> RPCResult<$ret> {
             match self {
                 Self::$e(v) => Ok(v),
-                // _ => Err(RPCError::invalid_params()),
+                _ => Err(RPCError::invalid_params()),
             }
         }
     };
@@ -75,6 +81,7 @@ impl Handle for ApiHandle {
 
                 Ok(Some(format!("{}", txid)))
             }
+            "api_getDaFee" => Ok(Some(format!("{}", self.da_fee))),
             _ => Err(RPCError::unknown_method()),
         }
     }

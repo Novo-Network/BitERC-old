@@ -19,6 +19,8 @@ pub struct BtcConfig {
     pub username: String,
     pub password: String,
     pub network: String,
+    pub da_fee: u64,
+    pub fee_address: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

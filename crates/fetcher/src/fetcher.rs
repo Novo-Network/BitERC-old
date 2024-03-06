@@ -1,10 +1,10 @@
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 
 use anyhow::{anyhow, Result};
 use bitcoin::{
     hashes::Hash,
     opcodes::all::{OP_PUSHBYTES_40, OP_RETURN},
-    Block, Transaction, TxOut,
+    Address, Amount, Block, Network, Transaction, TxOut, Txid,
 };
 use bitcoincore_rpc::{Client, RpcApi};
 use config::ChainConfig;
@@ -24,6 +24,9 @@ pub struct Fetcher {
     pub chain_id: u32,
     da_mgr: Arc<DAServiceManager>,
     client: Arc<Client>,
+    fee_address: Address,
+    da_fee: Amount,
+    network: Network,
 }
 
 impl Fetcher {
@@ -33,6 +36,9 @@ impl Fetcher {
         start: u64,
         chain_id: u32,
         da_mgr: Arc<DAServiceManager>,
+        fee_address: &str,
+        da_fee: u64,
+        network: &str,
     ) -> Result<Self> {
         let block_cnt = client.clone().get_block_count()?;
         if start > block_cnt + 1 {
@@ -40,13 +46,18 @@ impl Fetcher {
                 "The starting height is greater than the chain height"
             ));
         }
-
+        let fee_address = Address::from_str(fee_address).map(|addr| addr.assume_checked())?;
+        let da_fee = Amount::from_sat(da_fee);
+        let network = Network::from_str(network)?;
         Ok(Self {
             height: start,
             builder: BtcTransactionBuilder::new(electrs_url, client.clone())?,
             chain_id,
             da_mgr,
             client,
+            fee_address,
+            da_fee,
+            network,
         })
     }
 
@@ -116,11 +127,21 @@ impl Fetcher {
             input_amount += value;
         }
 
-        let output_amuont = btc_tx
-            .output
-            .iter()
-            .map(|txout| txout.value.to_sat())
-            .sum::<u64>();
+        let mut flag = false;
+        let mut output_amuont = 0;
+        for txout in btc_tx.output.iter() {
+            output_amuont += txout.value.to_sat();
+            if Ok(self.fee_address.clone())
+                == Address::from_script(&txout.script_pubkey, self.network)
+            {
+                if txout.value >= self.da_fee {
+                    flag = true;
+                }
+            };
+        }
+        if !flag {
+            return Err(anyhow!("da fee not found"));
+        }
 
         if input_amount > output_amuont {
             Ok(Some(input_amount - output_amuont))
@@ -133,8 +154,12 @@ impl Fetcher {
         let source_hash = H256::from(btc_tx.txid().to_byte_array());
 
         let from = if let Some(txin) = btc_tx.input.first() {
-            self.builder
-                .get_eth_from_address(&txin.previous_output.txid, txin.previous_output.vout)?
+            if txin.previous_output.txid != Txid::all_zeros() {
+                self.builder
+                    .get_eth_from_address(&txin.previous_output.txid, txin.previous_output.vout)?
+            } else {
+                return Ok(None);
+            }
         } else {
             return Err(anyhow!("input not found"));
         };

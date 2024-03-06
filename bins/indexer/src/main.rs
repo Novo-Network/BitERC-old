@@ -68,6 +68,9 @@ async fn main() -> Result<()> {
             cmd.start,
             da_mgr.clone(),
             &cmd.datadir,
+            &cfg.btc.fee_address,
+            cfg.btc.da_fee,
+            &cfg.btc.network,
         )
         .await
         {
@@ -85,7 +88,13 @@ async fn main() -> Result<()> {
         .ok_or(anyhow!("restore data error"))?;
 
     start_eth_api_server(&evm_rt, &cmd.listen_ip, cmd.http_port, cmd.ws_port).await?;
-    start_api_server(da_mgr.clone(), client.clone(), &cmd.listen_ip, cmd.api_port)?;
+    start_api_server(
+        da_mgr.clone(),
+        client.clone(),
+        &cmd.listen_ip,
+        cmd.api_port,
+        cfg.btc.da_fee,
+    )?;
 
     let start = {
         let height = fs::read(datadir.join(FETCHER_HEIGHT_FILE))?;
@@ -107,6 +116,9 @@ async fn main() -> Result<()> {
         start,
         evm_rt.chain_id as u32,
         da_mgr,
+        &cfg.btc.fee_address,
+        cfg.btc.da_fee,
+        &cfg.btc.network,
     )
     .await?;
 
@@ -146,12 +158,24 @@ async fn init_data_dir(
     start: u64,
     da_mgr: Arc<DAServiceManager>,
     datadir: &str,
+    fee_address: &str,
+    da_fee: u64,
+    network: &str,
 ) -> Result<()> {
     log::info!("fetcher first config");
-    let (height, cfg) = Fetcher::new(electrs_url, client, start, 0, da_mgr.clone())
-        .await?
-        .fetcher_first_cfg()
-        .await?;
+    let (height, cfg) = Fetcher::new(
+        electrs_url,
+        client,
+        start,
+        0,
+        da_mgr.clone(),
+        fee_address,
+        da_fee,
+        network,
+    )
+    .await?
+    .fetcher_first_cfg()
+    .await?;
 
     log::info!("create data dir");
     vsdb::vsdb_set_base_dir(datadir).map_err(|e| anyhow!(e.to_string()))?;
@@ -200,8 +224,9 @@ fn start_api_server(
     client: Arc<Client>,
     listen_ip: &str,
     api_port: u16,
+    da_fee: u64,
 ) -> Result<()> {
-    let handle = ApiHandle::new(da_mgr.clone(), client.to_owned());
+    let handle = ApiHandle::new(da_mgr.clone(), client.to_owned(), da_fee);
     let addr = format!("{}:{}", listen_ip, api_port).parse()?;
 
     tokio::spawn(async move {
