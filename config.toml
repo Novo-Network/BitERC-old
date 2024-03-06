@@ -12,6 +12,3 @@ btc_url = "http://127.0.0.1:18443"
 username = "admin1"
 password = "123"
 network = "regtest"
-
-[node]
-chain_id = 65535

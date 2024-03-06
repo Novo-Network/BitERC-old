@@ -46,7 +46,7 @@ impl ScriptCode {
     }
 
     pub fn check(&self, chain_id: u32, da_tys: Vec<u8>) -> Result<()> {
-        if self.chain_id != chain_id {
+        if 1 != self.tx_type && self.chain_id != chain_id {
             Err(anyhow!("chain id error:{} {}", self.chain_id, chain_id))
         } else if 0 != self.tx_type && 1 != self.tx_type {
             Err(anyhow!("tx type error:{}", self.tx_type))

@@ -6,6 +6,7 @@ export RUST_BACKTRACE=full
 cargo r --release --bin indexer -- \
   --config=./config.toml \
   --datadir="./data" \
+  --start=1 \
   --listen-ip="0.0.0.0" \
   --api-port=8544 \
   --http-port=8545 \

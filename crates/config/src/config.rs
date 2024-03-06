@@ -1,7 +1,15 @@
 use std::{fs::File, io::Read};
 
 use anyhow::Result;
-use da::{CelestiaConfig, DaType, FileConfig, GreenfieldConfig, IpfsConfig};
+#[cfg(feature = "celestia")]
+use da::CelestiaConfig;
+use da::DaType;
+#[cfg(feature = "file")]
+use da::FileConfig;
+#[cfg(feature = "greenfield")]
+use da::GreenfieldConfig;
+#[cfg(feature = "ipfs")]
+use da::IpfsConfig;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -17,9 +25,13 @@ pub struct BtcConfig {
 pub struct Config {
     pub default_da: DaType,
 
+    #[cfg(feature = "file")]
     pub file: Option<FileConfig>,
+    #[cfg(feature = "ipfs")]
     pub ipfs: Option<IpfsConfig>,
+    #[cfg(feature = "celestia")]
     pub celestia: Option<CelestiaConfig>,
+    #[cfg(feature = "greenfield")]
     pub greenfield: Option<GreenfieldConfig>,
 
     pub btc: BtcConfig,

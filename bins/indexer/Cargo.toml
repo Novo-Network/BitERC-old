@@ -33,3 +33,11 @@ vsdb = { version = "0.62.0", default-features = false, features = ["rocks_backen
 bitcoin = { workspace = true }
 bitcoincore-rpc = { workspace = true }
 ethers = { workspace = true }
+
+[features]
+default = ["greenfield"]
+
+file = ["da/file", "config/file"]
+ipfs = ["da/ipfs", "config/ipfs"]
+celestia = ["da/celestia", "config/celestia"]
+greenfield = ["da/greenfield", "config/greenfield"]

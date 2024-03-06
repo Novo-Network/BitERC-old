@@ -12,3 +12,9 @@ toml = "0.7.6"
 
 da = { workspace = true }
 ethers = { workspace = true }
+
+[features]
+file = ["da/file"]
+ipfs = ["da/ipfs"]
+celestia = ["da/celestia"]
+greenfield = ["da/greenfield"]

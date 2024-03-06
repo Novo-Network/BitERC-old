@@ -1,6 +1,6 @@
 #![deny(warnings)]
 
-use std::{fs, mem::size_of, sync::Arc, thread::sleep, time::Duration};
+use std::{fs, mem::size_of, path::PathBuf, sync::Arc, thread::sleep, time::Duration};
 
 use anyhow::{anyhow, Result};
 use bitcoincore_rpc::{Auth, Client};
@@ -16,7 +16,7 @@ use rt_evm::{model::traits::BlockStorage, EvmRuntime};
 pub struct CommandLine {
     #[clap(long)]
     pub config: String,
-    #[clap(long)]
+    #[clap(long, default_value_t = 1)]
     pub start: u64,
     #[clap(long)]
     pub datadir: String,
@@ -42,9 +42,13 @@ async fn main() -> Result<()> {
     let da_mgr = Arc::new(
         DAServiceManager::new(
             cfg.default_da,
+            #[cfg(feature = "file")]
             cfg.file,
+            #[cfg(feature = "ipfs")]
             cfg.ipfs,
+            #[cfg(feature = "celestia")]
             cfg.celestia,
+            #[cfg(feature = "greenfield")]
             cfg.greenfield,
         )
         .await?,
@@ -55,27 +59,26 @@ async fn main() -> Result<()> {
         Auth::UserPass(cfg.btc.username.clone(), cfg.btc.password.clone()),
     )?);
 
-    vsdb::vsdb_set_base_dir(&cmd.datadir).map_err(|e| anyhow!(e.to_string()))?;
-    let datadir = vsdb::vsdb_get_base_dir();
+    let datadir = PathBuf::from(&cmd.datadir);
 
     if !datadir.exists() {
-        let (height, cfg) = Fetcher::new(
+        if let Err(e) = init_data_dir(
             &cfg.btc.electrs_url,
             client.clone(),
             cmd.start,
-            0,
             da_mgr.clone(),
+            &cmd.datadir,
         )
-        .await?
-        .fetcher_first_cfg()
-        .await?;
-        EvmRuntime::create(cfg.chain_id.into(), &[]).map_err(|e| anyhow!(e.to_string()))?;
-        fs::write(datadir.join(FETCHER_HEIGHT_FILE), u64::to_be_bytes(height))?;
-        fs::write(
-            datadir.join(FETCHER_CONFIG_FILE),
-            serde_json::to_string_pretty(&cfg)?,
-        )?;
+        .await
+        {
+            log::error!("init_data_dir error:{}", e);
+            let _ = fs::remove_dir_all(datadir);
+
+            return Err(e);
+        }
     }
+
+    vsdb::vsdb_set_base_dir(&datadir).map_err(|e| anyhow!(e.to_string()))?;
 
     let mut evm_rt = EvmRuntime::restore()
         .map_err(|e| anyhow!(e.to_string()))?
@@ -135,6 +138,33 @@ async fn main() -> Result<()> {
             .map_err(|e| anyhow!(e.to_string()))?;
         hdr.produce_block(txs).map_err(|e| anyhow!(e.to_string()))?;
     }
+}
+
+async fn init_data_dir(
+    electrs_url: &str,
+    client: Arc<Client>,
+    start: u64,
+    da_mgr: Arc<DAServiceManager>,
+    datadir: &str,
+) -> Result<()> {
+    log::info!("fetcher first config");
+    let (height, cfg) = Fetcher::new(electrs_url, client, start, 0, da_mgr.clone())
+        .await?
+        .fetcher_first_cfg()
+        .await?;
+
+    log::info!("create data dir");
+    vsdb::vsdb_set_base_dir(datadir).map_err(|e| anyhow!(e.to_string()))?;
+    let datadir = vsdb::vsdb_get_base_dir();
+
+    log::info!("init data dir");
+    EvmRuntime::create(cfg.chain_id.into(), &[]).map_err(|e| anyhow!(e.to_string()))?;
+    fs::write(datadir.join(FETCHER_HEIGHT_FILE), u64::to_be_bytes(height))?;
+    fs::write(
+        datadir.join(FETCHER_CONFIG_FILE),
+        serde_json::to_string_pretty(&cfg)?,
+    )?;
+    Ok(())
 }
 
 async fn start_eth_api_server(
