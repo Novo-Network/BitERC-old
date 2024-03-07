@@ -1,7 +1,7 @@
 #![deny(warnings, unused_crate_dependencies)]
 
+mod chain_config_transaction;
 mod command_line;
-mod config_transaction;
 mod eth_transaction;
 mod gen_chain_config;
 

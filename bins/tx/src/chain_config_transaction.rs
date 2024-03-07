@@ -21,7 +21,7 @@ use utils::ScriptCode;
 
 #[derive(Debug, Args)]
 /// build config transaction
-pub struct ConfigTransaction {
+pub struct ChainConfigTransaction {
     #[clap(short, long)]
     config: String,
 
@@ -40,7 +40,7 @@ pub struct ConfigTransaction {
     #[arg(short, long)]
     chain_config: String,
 }
-impl ConfigTransaction {
+impl ChainConfigTransaction {
     pub async fn execute(&self) -> Result<()> {
         let cfg = Config::new(&self.config)?;
 
@@ -70,14 +70,16 @@ impl ConfigTransaction {
             .await?,
         );
 
-        let mut sc = ScriptCode::default();
-        sc.chain_id = Provider::<Http>::try_from(&self.eth_url)?
-            .get_chainid()
-            .await?
-            .as_u32();
-        sc.tx_type = 1;
-        sc.da_type = da_mgr.default_type();
-        sc.hash = da_mgr.calc_hash(&tx_bytes).await?;
+        let sc = ScriptCode {
+            chain_id: Provider::<Http>::try_from(&self.eth_url)?
+                .get_chainid()
+                .await?
+                .as_u32(),
+            tx_type: 1,
+            da_type: da_mgr.default_type(),
+            hash: da_mgr.calc_hash(&tx_bytes).await?,
+            ..Default::default()
+        };
 
         let client = Arc::new(Client::new(
             &cfg.btc.btc_url,

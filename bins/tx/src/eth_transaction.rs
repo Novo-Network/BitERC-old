@@ -57,7 +57,7 @@ impl EthTransaction {
         let btc_builder = BtcTransactionBuilder::new(&cfg.btc.electrs_url, client)?;
 
         let data = match &self.data {
-            Some(v) => hex::decode(v.strip_prefix("0x").unwrap_or(&v))?,
+            Some(v) => hex::decode(v.strip_prefix("0x").unwrap_or(v))?,
             None => vec![],
         };
 
@@ -99,11 +99,13 @@ impl EthTransaction {
             .await?,
         );
 
-        let mut sc = ScriptCode::default();
-        sc.chain_id = eth_builder.chain_id().await?;
-        sc.tx_type = 1;
-        sc.da_type = da_mgr.default_type();
-        sc.hash = da_mgr.calc_hash(&eth_tx_bytes).await?;
+        let sc = ScriptCode {
+            chain_id: eth_builder.chain_id().await?,
+            tx_type: 1,
+            da_type: da_mgr.default_type(),
+            hash: da_mgr.calc_hash(&eth_tx_bytes).await?,
+            ..Default::default()
+        };
 
         let btc_tx = btc_builder
             .build_transaction(

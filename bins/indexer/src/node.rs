@@ -5,7 +5,7 @@ use bitcoincore_rpc::{Auth, Client};
 use clap::Args;
 use config::Config;
 use da::DAServiceManager;
-use fetcher::{Data, Fetcher};
+use fetcher::{Data, Fetcher, FetcherConfig};
 use json_rpc_server::serve;
 use rpc_server::handle::NovoHandle;
 use rt_evm::{model::traits::BlockStorage, EvmRuntime};
@@ -66,14 +66,20 @@ impl Node {
         let datadir = PathBuf::from(&self.datadir);
 
         if !datadir.exists() {
+            let start = if self.start > 0 { self.start } else { 1 };
+
             if let Err(e) = self
                 .init_data_dir(
-                    &cfg.btc.electrs_url,
                     client.clone(),
                     da_mgr.clone(),
-                    &cfg.btc.fee_address,
-                    cfg.btc.da_fee,
-                    &cfg.btc.network,
+                    FetcherConfig {
+                        electrs_url: cfg.btc.electrs_url.clone(),
+                        start,
+                        chain_id: 0,
+                        fee_address: cfg.btc.fee_address.clone(),
+                        da_fee: cfg.btc.da_fee,
+                        network: cfg.btc.network.clone(),
+                    },
                 )
                 .await
             {
@@ -113,14 +119,16 @@ impl Node {
         };
 
         let mut fetcher = Fetcher::new(
-            &cfg.btc.electrs_url,
             client,
-            start,
-            evm_rt.chain_id as u32,
             da_mgr,
-            &cfg.btc.fee_address,
-            cfg.btc.da_fee,
-            &cfg.btc.network,
+            FetcherConfig {
+                electrs_url: cfg.btc.electrs_url.clone(),
+                start,
+                chain_id: evm_rt.chain_id as u32,
+                fee_address: cfg.btc.fee_address,
+                da_fee: cfg.btc.da_fee,
+                network: cfg.btc.network.clone(),
+            },
         )
         .await?;
 
@@ -142,7 +150,7 @@ impl Node {
                             serde_json::to_string_pretty(&cfg)?,
                         )?;
                     }
-                    Data::Transaction(tx) => txs.push(tx),
+                    Data::Transaction(tx) => txs.push(*tx),
                 }
             }
             log::debug!("execute transaction:{:#?}", txs);
@@ -156,28 +164,15 @@ impl Node {
 
     async fn init_data_dir(
         &self,
-        electrs_url: &str,
         client: Arc<Client>,
         da_mgr: Arc<DAServiceManager>,
-        fee_address: &str,
-        da_fee: u64,
-        network: &str,
+        cfg: FetcherConfig,
     ) -> Result<()> {
         log::info!("fetcher first config");
-        let start = if self.start > 0 { self.start } else { 1 };
-        let (height, cfg) = Fetcher::new(
-            electrs_url,
-            client,
-            start,
-            0,
-            da_mgr.clone(),
-            fee_address,
-            da_fee,
-            network,
-        )
-        .await?
-        .fetcher_first_cfg()
-        .await?;
+        let (height, cfg) = Fetcher::new(client, da_mgr, cfg)
+            .await?
+            .fetcher_first_cfg()
+            .await?;
 
         log::info!("create data dir");
         vsdb::vsdb_set_base_dir(&self.datadir).map_err(|e| anyhow!(e.to_string()))?;

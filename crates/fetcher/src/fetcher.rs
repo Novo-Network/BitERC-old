@@ -16,8 +16,18 @@ use utils::ScriptCode;
 
 pub enum Data {
     Config(ChainConfig),
-    Transaction(SignedTransaction),
+    Transaction(Box<SignedTransaction>),
 }
+
+pub struct FetcherConfig {
+    pub electrs_url: String,
+    pub start: u64,
+    pub chain_id: u32,
+    pub fee_address: String,
+    pub da_fee: u64,
+    pub network: String,
+}
+
 pub struct Fetcher {
     height: u64,
     builder: BtcTransactionBuilder,
@@ -31,28 +41,23 @@ pub struct Fetcher {
 
 impl Fetcher {
     pub async fn new(
-        electrs_url: &str,
         client: Arc<Client>,
-        start: u64,
-        chain_id: u32,
         da_mgr: Arc<DAServiceManager>,
-        fee_address: &str,
-        da_fee: u64,
-        network: &str,
+        cfg: FetcherConfig,
     ) -> Result<Self> {
         let block_cnt = client.clone().get_block_count()?;
-        if start > block_cnt + 1 {
+        if cfg.start > block_cnt + 1 {
             return Err(anyhow!(
                 "The starting height is greater than the chain height"
             ));
         }
-        let fee_address = Address::from_str(fee_address).map(|addr| addr.assume_checked())?;
-        let da_fee = Amount::from_sat(da_fee);
-        let network = Network::from_str(network)?;
+        let fee_address = Address::from_str(&cfg.fee_address).map(|addr| addr.assume_checked())?;
+        let da_fee = Amount::from_sat(cfg.da_fee);
+        let network = Network::from_str(&cfg.network)?;
         Ok(Self {
-            height: start,
-            builder: BtcTransactionBuilder::new(electrs_url, client.clone())?,
-            chain_id,
+            height: cfg.start,
+            builder: BtcTransactionBuilder::new(&cfg.electrs_url, client.clone())?,
+            chain_id: cfg.chain_id,
             da_mgr,
             client,
             fee_address,
@@ -129,10 +134,9 @@ impl Fetcher {
             output_amuont += txout.value.to_sat();
             if Ok(self.fee_address.clone())
                 == Address::from_script(&txout.script_pubkey, self.network)
+                && txout.value >= self.da_fee
             {
-                if txout.value >= self.da_fee {
-                    flag = true;
-                }
+                flag = true;
             };
         }
         if !flag {
@@ -219,7 +223,7 @@ impl Fetcher {
 
             let tx = SignedTransaction::from_deposit_tx(deposit_tx, self.chain_id.into());
             log::info!("transaction:{:#?}", tx);
-            Ok(Data::Transaction(tx))
+            Ok(Data::Transaction(Box::new(tx)))
         } else if vc.tx_type == 1 {
             let cfg = serde_json::from_slice(&tx_data)?;
             log::info!("chain config:{:#?}", cfg);
