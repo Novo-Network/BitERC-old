@@ -1,7 +1,8 @@
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 
+use anyhow::Result;
 use async_trait::async_trait;
-use bitcoin::{consensus::deserialize, Transaction};
+use bitcoin::{consensus::deserialize, Address, Amount, Network, Transaction};
 use bitcoincore_rpc::{
     jsonrpc::serde_json::{json, Value},
     Client, RpcApi,
@@ -14,8 +15,9 @@ use serde::{Deserialize, Serialize};
 pub struct NovoHandle {
     da_mgr: Arc<DAServiceManager>,
     client: Arc<Client>,
-    da_fee: u64,
-    fee_address: String,
+    fee_address: Address,
+    da_fee: Amount,
+    network: Network,
 }
 
 impl NovoHandle {
@@ -24,13 +26,18 @@ impl NovoHandle {
         client: Arc<Client>,
         da_fee: u64,
         fee_address: &str,
-    ) -> Self {
-        Self {
+        network: &str,
+    ) -> Result<Self> {
+        let fee_address = Address::from_str(fee_address).map(|addr| addr.assume_checked())?;
+        let da_fee = Amount::from_sat(da_fee);
+        let network = Network::from_str(network)?;
+        Ok(Self {
             da_mgr,
             client,
+            fee_address,
             da_fee,
-            fee_address: fee_address.into(),
-        }
+            network,
+        })
     }
 }
 
@@ -77,6 +84,20 @@ impl Handle for NovoHandle {
 
                 let tx: Transaction = deserialize(&btc_tx_bytes)
                     .map_err(|e| RPCError::internal_error(e.to_string()))?;
+
+                let mut flag = false;
+                for txout in tx.output.iter() {
+                    if Ok(self.fee_address.clone())
+                        == Address::from_script(&txout.script_pubkey, self.network)
+                        && txout.value >= self.da_fee
+                    {
+                        flag = true;
+                    };
+                }
+                if !flag {
+                    return Err(RPCError::internal_error("da fee not found".to_string()));
+                }
+
                 let txid = self
                     .client
                     .send_raw_transaction(&tx)

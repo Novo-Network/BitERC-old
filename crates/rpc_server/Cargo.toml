@@ -13,6 +13,7 @@ json-rpc-server = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
 log = { workspace = true }
+anyhow = { workspace = true }
 
 bitcoin = { workspace = true }
 bitcoincore-rpc = { workspace = true }

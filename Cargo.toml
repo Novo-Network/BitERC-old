@@ -12,7 +12,7 @@ resolver = "2"
 
 [workspace.dependencies]
 utils = { path = "crates/utils" }
-da = { git = "https://github.com/Novo-Network/da.git" }
+da = { git = "https://github.com/Novo-Network/da.git",default-features = false }
 rpc_server = { path = "crates/rpc_server" }
 tx_builder = { path = "crates/tx_builder" }
 fetcher = { path = "crates/fetcher" }

@@ -5,7 +5,7 @@ use bitcoincore_rpc::{Auth, Client};
 use clap::Args;
 use config::Config;
 use da::DAServiceManager;
-use fetcher::{Data, Fetcher, FetcherConfig};
+use fetcher::{Data, Fetcher};
 use json_rpc_server::serve;
 use rpc_server::handle::NovoHandle;
 use rt_evm::{model::traits::BlockStorage, EvmRuntime};
@@ -72,14 +72,9 @@ impl Node {
                 .init_data_dir(
                     client.clone(),
                     da_mgr.clone(),
-                    FetcherConfig {
-                        electrs_url: cfg.btc.electrs_url.clone(),
-                        start,
-                        chain_id: 0,
-                        fee_address: cfg.btc.fee_address.clone(),
-                        da_fee: cfg.btc.da_fee,
-                        network: cfg.btc.network.clone(),
-                    },
+                    &cfg.btc.electrs_url,
+                    start,
+                    0,
                 )
                 .await
             {
@@ -100,8 +95,9 @@ impl Node {
         self.start_api_server(
             da_mgr.clone(),
             client.clone(),
-            &cfg.btc.fee_address,
             cfg.btc.da_fee,
+            &cfg.btc.fee_address,
+            &cfg.btc.network,
         )?;
 
         let start = {
@@ -121,14 +117,9 @@ impl Node {
         let mut fetcher = Fetcher::new(
             client,
             da_mgr,
-            FetcherConfig {
-                electrs_url: cfg.btc.electrs_url.clone(),
-                start,
-                chain_id: evm_rt.chain_id as u32,
-                fee_address: cfg.btc.fee_address,
-                da_fee: cfg.btc.da_fee,
-                network: cfg.btc.network.clone(),
-            },
+            &cfg.btc.electrs_url,
+            start,
+            evm_rt.chain_id as u32,
         )
         .await?;
 
@@ -166,10 +157,12 @@ impl Node {
         &self,
         client: Arc<Client>,
         da_mgr: Arc<DAServiceManager>,
-        cfg: FetcherConfig,
+        electrs_url: &str,
+        start: u64,
+        chain_id: u32,
     ) -> Result<()> {
         log::info!("fetcher first config");
-        let (height, cfg) = Fetcher::new(client, da_mgr, cfg)
+        let (height, cfg) = Fetcher::new(client, da_mgr, electrs_url, start, chain_id)
             .await?
             .fetcher_first_cfg()
             .await?;
@@ -215,10 +208,17 @@ impl Node {
         &self,
         da_mgr: Arc<DAServiceManager>,
         client: Arc<Client>,
-        fee_address: &str,
         da_fee: u64,
+        fee_address: &str,
+        network: &str,
     ) -> Result<()> {
-        let handle = NovoHandle::new(da_mgr.clone(), client.to_owned(), da_fee, fee_address);
+        let handle = NovoHandle::new(
+            da_mgr.clone(),
+            client.to_owned(),
+            da_fee,
+            fee_address,
+            network,
+        )?;
         let addr = format!("{}:{}", self.listen_ip, self.api_port).parse()?;
 
         tokio::spawn(async move {

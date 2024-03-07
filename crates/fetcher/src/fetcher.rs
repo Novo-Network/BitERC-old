@@ -1,10 +1,10 @@
-use std::{str::FromStr, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use bitcoin::{
     hashes::Hash,
     opcodes::all::{OP_PUSHBYTES_40, OP_RETURN},
-    Address, Amount, Block, Network, Transaction, TxOut, Txid,
+    Block, Transaction, TxOut, Txid,
 };
 use bitcoincore_rpc::{Client, RpcApi};
 use config::ChainConfig;
@@ -19,50 +19,35 @@ pub enum Data {
     Transaction(Box<SignedTransaction>),
 }
 
-pub struct FetcherConfig {
-    pub electrs_url: String,
-    pub start: u64,
-    pub chain_id: u32,
-    pub fee_address: String,
-    pub da_fee: u64,
-    pub network: String,
-}
-
 pub struct Fetcher {
     height: u64,
     builder: BtcTransactionBuilder,
     pub chain_id: u32,
     da_mgr: Arc<DAServiceManager>,
     client: Arc<Client>,
-    fee_address: Address,
-    da_fee: Amount,
-    network: Network,
 }
 
 impl Fetcher {
     pub async fn new(
         client: Arc<Client>,
         da_mgr: Arc<DAServiceManager>,
-        cfg: FetcherConfig,
+        electrs_url: &str,
+        start: u64,
+        chain_id: u32,
     ) -> Result<Self> {
         let block_cnt = client.clone().get_block_count()?;
-        if cfg.start > block_cnt + 1 {
+        if start > block_cnt + 1 {
             return Err(anyhow!(
                 "The starting height is greater than the chain height"
             ));
         }
-        let fee_address = Address::from_str(&cfg.fee_address).map(|addr| addr.assume_checked())?;
-        let da_fee = Amount::from_sat(cfg.da_fee);
-        let network = Network::from_str(&cfg.network)?;
+
         Ok(Self {
-            height: cfg.start,
-            builder: BtcTransactionBuilder::new(&cfg.electrs_url, client.clone())?,
-            chain_id: cfg.chain_id,
+            height: start,
+            builder: BtcTransactionBuilder::new(electrs_url, client.clone())?,
+            chain_id,
             da_mgr,
             client,
-            fee_address,
-            da_fee,
-            network,
         })
     }
 
@@ -128,19 +113,9 @@ impl Fetcher {
             input_amount += value;
         }
 
-        let mut flag = false;
         let mut output_amuont = 0;
         for txout in btc_tx.output.iter() {
             output_amuont += txout.value.to_sat();
-            if Ok(self.fee_address.clone())
-                == Address::from_script(&txout.script_pubkey, self.network)
-                && txout.value >= self.da_fee
-            {
-                flag = true;
-            };
-        }
-        if !flag {
-            return Err(anyhow!("da fee not found"));
         }
 
         if input_amount > output_amuont {
