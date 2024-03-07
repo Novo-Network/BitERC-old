@@ -38,7 +38,7 @@ impl NovoHandle {
 #[serde(untagged)]
 pub enum NovoHandleRequest {
     SendRawTransactionArray((Bytes, Bytes)),
-    SendRawTransaction { eth_tx: Bytes, btc_tx: Bytes },
+    SendRawTransaction { tx_data: Bytes, btc_tx: Bytes },
     GetDaINfo,
 }
 
@@ -46,7 +46,7 @@ impl NovoHandleRequest {
     pub fn into_send_raw_transaction(self) -> RPCResult<(Bytes, Bytes)> {
         match self {
             Self::SendRawTransactionArray(s) => Ok(s),
-            Self::SendRawTransaction { eth_tx, btc_tx } => Ok((eth_tx, btc_tx)),
+            Self::SendRawTransaction { tx_data, btc_tx } => Ok((tx_data, btc_tx)),
             _ => Err(RPCError::invalid_params()),
         }
     }

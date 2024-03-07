@@ -1,19 +1,18 @@
 [workspace]
 members = [
     "crates/utils",
-    "crates/da", 
     "crates/rpc_server",
     "crates/tx_builder",
     "crates/fetcher",
     "crates/config",
     "bins/indexer",
-    "bins/build_tx",
+    "bins/tx",
 ]
 resolver = "2"
 
 [workspace.dependencies]
 utils = { path = "crates/utils" }
-da = { path = "crates/da" }
+da = { git = "https://github.com/Novo-Network/da.git" }
 rpc_server = { path = "crates/rpc_server" }
 tx_builder = { path = "crates/tx_builder" }
 fetcher = { path = "crates/fetcher" }

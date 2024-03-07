@@ -27,9 +27,10 @@ vsdb = { version = "0.62.0", default-features = false, features = ["rocks_backen
 bitcoincore-rpc = { workspace = true }
  
 [features]
-default = ["greenfield"]
+default = ["ethereum"]
 
 file = ["da/file", "config/file"]
 ipfs = ["da/ipfs", "config/ipfs"]
 celestia = ["da/celestia", "config/celestia"]
 greenfield = ["da/greenfield", "config/greenfield"]
+ethereum = ["da/ethereum", "config/ethereum"]

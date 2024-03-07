@@ -3,6 +3,7 @@
 mod command_line;
 mod config_transaction;
 mod eth_transaction;
+mod gen_chain_config;
 
 use anyhow::Result;
 use clap::Parser;

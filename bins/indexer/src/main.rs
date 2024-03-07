@@ -1,6 +1,8 @@
 #![deny(warnings, unused_crate_dependencies)]
 
 mod command_line;
+mod generate_config;
+mod node;
 
 use anyhow::Result;
 use clap::Parser;

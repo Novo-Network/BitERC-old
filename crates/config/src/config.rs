@@ -4,6 +4,8 @@ use anyhow::Result;
 #[cfg(feature = "celestia")]
 use da::CelestiaConfig;
 use da::DaType;
+#[cfg(feature = "ethereum")]
+use da::EthereumConfig;
 #[cfg(feature = "file")]
 use da::FileConfig;
 #[cfg(feature = "greenfield")]
@@ -35,7 +37,8 @@ pub struct Config {
     pub celestia: Option<CelestiaConfig>,
     #[cfg(feature = "greenfield")]
     pub greenfield: Option<GreenfieldConfig>,
-
+    #[cfg(feature = "ethereum")]
+    pub ethereum: Option<EthereumConfig>,
     pub btc: BtcConfig,
 }
 

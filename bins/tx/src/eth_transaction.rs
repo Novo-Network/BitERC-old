@@ -1,14 +1,16 @@
 use anyhow::{anyhow, Result};
-use bitcoin::{consensus::serialize, Address, PrivateKey};
+use bitcoin::consensus::serialize;
 use bitcoincore_rpc::{Auth, Client};
 use clap::Args;
 use config::Config;
-use da::DaType;
+use da::DAServiceManager;
 #[cfg(feature = "file")]
 use da::FileService;
 #[cfg(feature = "greenfield")]
 use da::GreenfieldService;
 use ethers::types::{Bytes, H160, U256};
+use json_rpc_server::call;
+use serde_json::json;
 use std::sync::Arc;
 use tx_builder::{btc::BtcTransactionBuilder, eth::EthTransactionBuilder, SAT2WEI};
 use utils::ScriptCode;
@@ -16,23 +18,38 @@ use utils::ScriptCode;
 #[derive(Debug, Args)]
 /// build eth transaction
 pub struct EthTransaction {
-    #[clap(long)]
+    #[clap(short, long)]
+    config: String,
+
+    #[clap(short, long)]
+    private_key: String,
+
+    #[clap(short, long)]
+    eth_url: String,
+
+    #[clap(short, long)]
+    novo_api_url: String,
+
+    #[arg(short, long)]
+    send_tx: bool,
+
+    #[clap(short, long)]
     to: Option<H160>,
-    #[clap(long)]
+
+    #[clap(short, long)]
     value: U256,
-    #[clap(long)]
+
+    #[clap(short, long)]
     data: Option<String>,
 }
 
 impl EthTransaction {
-    pub async fn execute(
-        &self,
-        cfg: Config,
-        novo_api_url: &str,
-        eth_url: String,
-        private_key: PrivateKey,
-        address: Address,
-    ) -> Result<Option<(Bytes, Bytes)>> {
+    pub async fn execute(&self) -> Result<()> {
+        let cfg = Config::new(&self.config)?;
+
+        let (private_key, address) =
+            BtcTransactionBuilder::parse_sk(&self.private_key, &cfg.btc.network)?;
+
         let client = Arc::new(Client::new(
             &cfg.btc.btc_url,
             Auth::UserPass(cfg.btc.username.clone(), cfg.btc.password.clone()),
@@ -51,7 +68,7 @@ impl EthTransaction {
             btc_builder.get_eth_from_address(&first_input.tx_hash, first_input.tx_pos as u32)?
         };
 
-        let eth_builder = EthTransactionBuilder::new(&eth_url)?;
+        let eth_builder = EthTransactionBuilder::new(&self.eth_url)?;
         let eth_tx = eth_builder
             .build_transaction(from, self.value, self.to, &data)
             .await?;
@@ -65,24 +82,32 @@ impl EthTransaction {
 
         let eth_tx_bytes = eth_tx.rlp();
 
+        let da_mgr = Arc::new(
+            DAServiceManager::new(
+                cfg.default_da,
+                #[cfg(feature = "file")]
+                cfg.file,
+                #[cfg(feature = "ipfs")]
+                cfg.ipfs,
+                #[cfg(feature = "celestia")]
+                cfg.celestia,
+                #[cfg(feature = "greenfield")]
+                cfg.greenfield,
+                #[cfg(feature = "ethereum")]
+                cfg.ethereum,
+            )
+            .await?,
+        );
+
         let mut sc = ScriptCode::default();
         sc.chain_id = eth_builder.chain_id().await?;
         sc.tx_type = 1;
-        sc.da_type = cfg.default_da.type_byte();
-        sc.hash = match cfg.default_da {
-            #[cfg(feature = "file")]
-            DaType::File => FileService::hash(&eth_tx_bytes),
-            #[cfg(feature = "ipfs")]
-            DaType::Ipfs => todo!(),
-            #[cfg(feature = "celestia")]
-            DaType::Celestia => todo!(),
-            #[cfg(feature = "greenfield")]
-            DaType::Greenfield => GreenfieldService::hash(&eth_tx_bytes),
-        };
+        sc.da_type = da_mgr.default_type();
+        sc.hash = da_mgr.calc_hash(&eth_tx_bytes).await?;
 
         let btc_tx = btc_builder
             .build_transaction(
-                novo_api_url,
+                &self.novo_api_url,
                 private_key,
                 script,
                 unspents,
@@ -92,6 +117,26 @@ impl EthTransaction {
             .await?;
         log::info!("btc transaction:{:#?}", btc_tx);
 
-        Ok(Some((eth_tx_bytes, Bytes::from_iter(serialize(&btc_tx)))))
+        let (tx_data, btc_tx) = (eth_tx_bytes, Bytes::from_iter(serialize(&btc_tx)));
+        if self.send_tx {
+            let txid: Option<String> = call(
+                &self.novo_api_url,
+                "novo_sendRawTransaction",
+                &vec![tx_data, btc_tx],
+                None,
+            )
+            .await
+            .map_err(|e| anyhow!("{:?}", e))?;
+            println!("send transaction sucess: {:?}", txid);
+        } else {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "tx_data": tx_data,
+                    "btc_tx": btc_tx,
+                }))?
+            );
+        }
+        Ok(())
     }
 }
