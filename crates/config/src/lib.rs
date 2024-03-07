@@ -1,3 +1,5 @@
+#![deny(warnings, unused_crate_dependencies)]
+
 mod config;
 pub use config::*;
 

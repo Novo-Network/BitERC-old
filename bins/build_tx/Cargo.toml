@@ -1,5 +1,5 @@
 [package]
-name = "indexer"
+name = "send-tx"
 version = "0.1.0"
 edition = "2021"
 
@@ -10,22 +10,22 @@ anyhow =  { workspace = true }
 env_logger = { workspace = true }
 log = { workspace = true }
 
+utils = { workspace = true }
 da = { workspace = true }
-rpc_server = { workspace = true }
-fetcher = { workspace = true }
+tx_builder = { workspace = true }
 config = { workspace = true }
 
+hex =  { workspace = true }
 serde_json = { workspace = true }
-rt-evm =  { workspace = true }
 
 clap = { version = "4.0", features = ["derive"] }
 tokio = { version = "1.26", features = ["full"] }
 json-rpc-server = { workspace = true }
 
-vsdb = { version = "0.62.0", default-features = false, features = ["rocks_backend","extra_types"] }
-
+bitcoin = { workspace = true }
 bitcoincore-rpc = { workspace = true }
- 
+ethers = { workspace = true }
+
 [features]
 default = ["greenfield"]
 

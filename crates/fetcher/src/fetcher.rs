@@ -109,10 +109,6 @@ impl Fetcher {
     }
 
     fn verify_transaction(&self, btc_tx: &Transaction) -> Result<Option<u64>> {
-        if btc_tx.input.is_empty() {
-            return Err(anyhow!("tx input is empty"));
-        }
-
         let mut input_amount = 0;
         for txin in btc_tx.input.iter() {
             let tx = self

@@ -1,13 +1,10 @@
-use std::process::Command;
-
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use ethers::{
     providers::{Http, Middleware, Provider},
     types::{
         transaction::{eip2718::TypedTransaction, optimism::DepositTransaction},
         TransactionRequest, H160, H256, U256,
     },
-    utils::hex,
 };
 
 pub struct EthTransactionBuilder {
@@ -29,8 +26,6 @@ impl EthTransactionBuilder {
         value: U256,
         to: Option<H160>,
         data: &[u8],
-        sig: &str,
-        args: Vec<String>,
     ) -> Result<TypedTransaction> {
         let mut tx = TransactionRequest::new().value(value).from(from);
         log::info!("eth from address: {:?}", from);
@@ -39,25 +34,8 @@ impl EthTransactionBuilder {
             tx = tx.to(to);
         }
 
-        let data = if data.is_empty() {
-            let mut cast = Command::new("cast");
-            cast.arg("calldata");
-            cast.arg(sig);
-            for it in args {
-                cast.arg(it);
-            }
-            let output = cast.output()?;
-            let calldata = String::from_utf8(output.stdout)?;
-            if !output.status.success() {
-                return Err(anyhow!(calldata));
-            }
-            hex::decode(calldata.trim().strip_prefix("0x").unwrap_or(&calldata))?
-        } else {
-            data.to_vec()
-        };
-
         let nonce = self.provider.get_transaction_count(from, None).await?;
-        let tx = tx.nonce(nonce).data(data);
+        let tx = tx.nonce(nonce).data(data.to_vec());
 
         let mut tx = TypedTransaction::DepositTransaction(DepositTransaction {
             tx,

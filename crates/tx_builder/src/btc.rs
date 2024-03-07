@@ -13,12 +13,15 @@ use bitcoin::{
     Address, Amount, EcdsaSighashType, Network, OutPoint, PrivateKey, Script, ScriptBuf, Sequence,
     Transaction, TxIn, TxOut, Txid, Witness,
 };
-use bitcoincore_rpc::{json::SignRawTransactionInput, Client as BitcoincoreClient, RpcApi};
+use bitcoincore_rpc::{
+    json::SignRawTransactionInput, jsonrpc::serde_json::Value, Client as BitcoincoreClient, RpcApi,
+};
 use electrum_client::{Client as ElectrumClient, ElectrumApi, ListUnspentRes};
 use ethers::{types::H160, utils::keccak256};
+use json_rpc_server::call;
 
 pub struct BtcTransactionBuilder {
-    pub electrum_client: ElectrumClient,
+    electrum_client: ElectrumClient,
     pub bitcoincore_client: Arc<BitcoincoreClient>,
 }
 
@@ -77,6 +80,7 @@ impl BtcTransactionBuilder {
 
     pub async fn build_transaction(
         &self,
+        novo_api_url: &str,
         private_key: PrivateKey,
         script: ScriptBuf,
         unspents: Vec<ListUnspentRes>,
@@ -86,16 +90,36 @@ impl BtcTransactionBuilder {
         log::info!("unspent:{:#?}", unspents);
 
         let mut fee = Amount::from_sat(eth_fee);
+
         let relay_fee = Amount::from_btc(self.electrum_client.relay_fee()?)?;
         log::info!("relay_fee:{:#?}", relay_fee);
         if fee < relay_fee {
             fee = relay_fee;
         }
 
+        let (da_address, da_fee) = {
+            let da_info = call::<Option<Value>, Value>(novo_api_url, "novo_getDaInfo", &None, None)
+                .await
+                .map_err(|e| anyhow!("{:?}", e))?
+                .ok_or(anyhow!("da info empty"))?;
+            let da_fee = da_info
+                .get("fee")
+                .and_then(|v| v.as_u64())
+                .ok_or(anyhow!("da info empty"))?;
+            let addr = da_info
+                .get("fee")
+                .and_then(|v| v.as_str())
+                .ok_or(anyhow!("da info empty"))?;
+            (
+                Address::from_str(addr).map(|a| a.assume_checked())?,
+                Amount::from_sat(da_fee),
+            )
+        };
+        fee += da_fee;
+
         let mut input = Vec::new();
         let mut sign_inputs = Vec::new();
         let mut sum_amount = Amount::ZERO;
-
         for it in unspents.iter() {
             sum_amount += Amount::from_sat(it.value);
 
@@ -136,6 +160,10 @@ impl BtcTransactionBuilder {
                         .push_opcode(OP_RETURN)
                         .push_slice(hash)
                         .into_script(),
+                },
+                TxOut {
+                    value: da_fee,
+                    script_pubkey: da_address.script_pubkey(),
                 },
                 TxOut {
                     value: sum_amount - fee,

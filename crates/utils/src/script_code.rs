@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ScriptCode {
     pub chain_id: u32,
     pub tx_type: u8,

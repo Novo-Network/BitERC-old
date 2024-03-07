@@ -2,57 +2,60 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bitcoin::{consensus::deserialize, Transaction};
-use bitcoincore_rpc::{Client, RpcApi};
+use bitcoincore_rpc::{
+    jsonrpc::serde_json::{json, Value},
+    Client, RpcApi,
+};
 use da::DAServiceManager;
 use ethers::types::Bytes;
 use json_rpc_server::{Handle, RPCError, RPCResult};
 use serde::{Deserialize, Serialize};
 
-pub struct ApiHandle {
+pub struct NovoHandle {
     da_mgr: Arc<DAServiceManager>,
     client: Arc<Client>,
     da_fee: u64,
+    fee_address: String,
 }
 
-impl ApiHandle {
-    pub fn new(da_mgr: Arc<DAServiceManager>, client: Arc<Client>, da_fee: u64) -> Self {
+impl NovoHandle {
+    pub fn new(
+        da_mgr: Arc<DAServiceManager>,
+        client: Arc<Client>,
+        da_fee: u64,
+        fee_address: &str,
+    ) -> Self {
         Self {
             da_mgr,
             client,
             da_fee,
+            fee_address: fee_address.into(),
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum ApiHandleRequest {
-    SendRawTransaction((Bytes, Bytes)),
-    GetDaFee,
-}
-macro_rules! define_into {
-    ($func: ident, $ret: ty, $e: ident) => {
-        pub fn $func(self) -> RPCResult<$ret> {
-            match self {
-                Self::$e(v) => Ok(v),
-                _ => Err(RPCError::invalid_params()),
-            }
-        }
-    };
+pub enum NovoHandleRequest {
+    SendRawTransactionArray((Bytes, Bytes)),
+    SendRawTransaction { eth_tx: Bytes, btc_tx: Bytes },
+    GetDaINfo,
 }
 
-impl ApiHandleRequest {
-    define_into!(
-        into_send_raw_transaction,
-        (Bytes, Bytes),
-        SendRawTransaction
-    );
+impl NovoHandleRequest {
+    pub fn into_send_raw_transaction(self) -> RPCResult<(Bytes, Bytes)> {
+        match self {
+            Self::SendRawTransactionArray(s) => Ok(s),
+            Self::SendRawTransaction { eth_tx, btc_tx } => Ok((eth_tx, btc_tx)),
+            _ => Err(RPCError::invalid_params()),
+        }
+    }
 }
 
 #[async_trait]
-impl Handle for ApiHandle {
-    type Request = ApiHandleRequest;
-    type Response = String;
+impl Handle for NovoHandle {
+    type Request = NovoHandleRequest;
+    type Response = Value;
 
     async fn handle(
         &self,
@@ -60,7 +63,7 @@ impl Handle for ApiHandle {
         req: Option<Self::Request>,
     ) -> std::result::Result<Option<Self::Response>, RPCError> {
         match method {
-            "api_sendRawTransaction" => {
+            "novo_sendRawTransaction" => {
                 let (eth_tx_bytes, btc_tx_bytes) = req
                     .ok_or(RPCError::invalid_params())?
                     .into_send_raw_transaction()?;
@@ -79,9 +82,13 @@ impl Handle for ApiHandle {
                     .send_raw_transaction(&tx)
                     .map_err(|e| RPCError::internal_error(e.to_string()))?;
 
-                Ok(Some(format!("{}", txid)))
+                Ok(Some(Value::String(format!("{}", txid))))
             }
-            "api_getDaFee" => Ok(Some(format!("{}", self.da_fee))),
+            "novo_getDaInfo" => Ok(Some(json!({
+                "address": &self.fee_address,
+                "fee": self.da_fee,
+
+            }))),
             _ => Err(RPCError::unknown_method()),
         }
     }
