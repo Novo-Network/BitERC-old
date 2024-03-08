@@ -80,10 +80,10 @@ impl Handle for NovoHandle {
                 self.da_mgr
                     .set_tx(&eth_tx_bytes)
                     .await
-                    .map_err(|e| RPCError::internal_error(e.to_string()))?;
+                    .map_err(|e| RPCError::internal_error(format!("da set tx:{e}")))?;
 
                 let tx: Transaction = deserialize(&btc_tx_bytes)
-                    .map_err(|e| RPCError::internal_error(e.to_string()))?;
+                    .map_err(|e| RPCError::internal_error(format!("deserialize btc tx:{e}")))?;
 
                 let mut flag = false;
                 for txout in tx.output.iter() {
@@ -98,10 +98,9 @@ impl Handle for NovoHandle {
                     return Err(RPCError::internal_error("da fee not found".to_string()));
                 }
 
-                let txid = self
-                    .client
-                    .send_raw_transaction(&tx)
-                    .map_err(|e| RPCError::internal_error(e.to_string()))?;
+                let txid = self.client.send_raw_transaction(&tx).map_err(|e| {
+                    RPCError::internal_error(format!("send_raw_transaction tx:{e}"))
+                })?;
 
                 Ok(Some(Value::String(format!("{}", txid))))
             }

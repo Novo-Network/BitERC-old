@@ -68,7 +68,7 @@ impl GenerateConfig {
                     fee_address: "bcrt1qhwkqamxr93phyhlc82elqm2n8hufr8xls0djwn".to_string(),
                 },
             };
-            Ok(fs::write(file, serde_json::to_string_pretty(&cfg)?)?)
+            Ok(fs::write(file, toml::to_string_pretty(&cfg)?)?)
         }
     }
 }

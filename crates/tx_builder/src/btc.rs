@@ -86,6 +86,7 @@ impl BtcTransactionBuilder {
         unspents: Vec<ListUnspentRes>,
         eth_fee: u64,
         hash: &[u8; 40],
+        pay_da_fee: bool,
     ) -> Result<Transaction> {
         log::info!("unspent:{:#?}", unspents);
 
@@ -97,23 +98,27 @@ impl BtcTransactionBuilder {
             fee = relay_fee;
         }
 
-        let (da_address, da_fee) = {
+        let (da_address, da_fee) = if pay_da_fee {
             let da_info = call::<Option<Value>, Value>(novo_api_url, "novo_getDaInfo", &None, None)
                 .await
                 .map_err(|e| anyhow!("{:?}", e))?
                 .ok_or(anyhow!("da info empty"))?;
+
             let da_fee = da_info
                 .get("fee")
                 .and_then(|v| v.as_u64())
-                .ok_or(anyhow!("da info empty"))?;
+                .ok_or(anyhow!("da fee empty"))?;
+
             let addr = da_info
-                .get("fee")
+                .get("address")
                 .and_then(|v| v.as_str())
-                .ok_or(anyhow!("da info empty"))?;
+                .ok_or(anyhow!("da address empty"))?;
             (
-                Address::from_str(addr).map(|a| a.assume_checked())?,
+                Some(Address::from_str(addr).map(|a| a.assume_checked())?),
                 Amount::from_sat(da_fee),
             )
+        } else {
+            (None, Amount::ZERO)
         };
         fee += da_fee;
 
@@ -147,29 +152,31 @@ impl BtcTransactionBuilder {
         if sum_amount <= fee {
             return Err(anyhow!("Insufficient balance"));
         }
-
+        let mut output = vec![
+            TxOut {
+                value: Amount::from_sat(0),
+                script_pubkey: Builder::new()
+                    .push_opcode(OP_RETURN)
+                    .push_slice(hash)
+                    .into_script(),
+            },
+            TxOut {
+                value: sum_amount - fee,
+                script_pubkey: script,
+            },
+        ];
+        if let Some(addr) = da_address {
+            output.push(TxOut {
+                value: da_fee,
+                script_pubkey: addr.script_pubkey(),
+            })
+        }
         // create transaction
         let mut unsigned_tx = Transaction {
             version: Version::ONE,
             lock_time: LockTime::ZERO,
             input,
-            output: vec![
-                TxOut {
-                    value: Amount::from_sat(0),
-                    script_pubkey: Builder::new()
-                        .push_opcode(OP_RETURN)
-                        .push_slice(hash)
-                        .into_script(),
-                },
-                TxOut {
-                    value: da_fee,
-                    script_pubkey: da_address.script_pubkey(),
-                },
-                TxOut {
-                    value: sum_amount - fee,
-                    script_pubkey: script,
-                },
-            ],
+            output,
         };
         let sighash_type = EcdsaSighashType::All;
         let secp = Secp256k1::new();

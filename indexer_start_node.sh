@@ -3,9 +3,9 @@ set -xe
 export RUST_LOG=info
 export RUST_BACKTRACE=full
 
-#cargo r --bin indexer -- --config aa.toml gen-cfg
+rm -rvf ./data
 
-cargo r --release --bin indexer -- \
+cargo r --release  -- node \
   --config=./config.toml \
   --datadir="./data" \
   --start=1 \

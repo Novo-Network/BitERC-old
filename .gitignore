@@ -7,3 +7,4 @@ Cargo.lock
 .storage
 data
 da_file
+config.toml
