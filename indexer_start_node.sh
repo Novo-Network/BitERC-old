@@ -3,13 +3,13 @@ set -xe
 export RUST_LOG=info
 export RUST_BACKTRACE=full
 
-#cargo r --bin indexer -- --config aa.toml gen-cfg
+rm -rvf ./data
 
-cargo r --release --bin indexer -- \
+cargo r --release  -- node \
   --config=./config.toml \
   --datadir="./data" \
   --start=1 \
   --listen-ip="0.0.0.0" \
   --api-port=8544 \
-  --http-port=8545 \
-  --ws-port=8546
+  --http-port=8543 \
+  --ws-port=8542

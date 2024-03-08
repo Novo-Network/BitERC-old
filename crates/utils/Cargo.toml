@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 anyhow = { workspace = true }
 log = { workspace = true }
+
+bitcoin = { workspace = true }

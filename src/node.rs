@@ -85,8 +85,6 @@ impl Node {
             }
         }
 
-        vsdb::vsdb_set_base_dir(&datadir).map_err(|e| anyhow!(e.to_string()))?;
-
         let mut evm_rt = EvmRuntime::restore()
             .map_err(|e| anyhow!(e.to_string()))?
             .ok_or(anyhow!("restore data error"))?;
@@ -122,6 +120,7 @@ impl Node {
             evm_rt.chain_id as u32,
         )
         .await?;
+        log::info!("start node");
 
         loop {
             let (block_time, datas) = if let Ok(Some(block)) = fetcher.fetcher().await {
@@ -172,7 +171,8 @@ impl Node {
         let datadir = vsdb::vsdb_get_base_dir();
 
         log::info!("init data dir");
-        EvmRuntime::create(cfg.chain_id.into(), &[]).map_err(|e| anyhow!(e.to_string()))?;
+        EvmRuntime::restore_or_create(cfg.chain_id.into(), &[])
+            .map_err(|e| anyhow!(e.to_string()))?;
         fs::write(datadir.join(FETCHER_HEIGHT_FILE), u64::to_be_bytes(height))?;
         fs::write(
             datadir.join(FETCHER_CONFIG_FILE),

@@ -7,10 +7,10 @@ use bitcoin::{
     hashes::Hash,
     opcodes::all::OP_RETURN,
     script::Builder,
-    secp256k1::{All, Message, Secp256k1, SecretKey},
+    secp256k1::{Message, Secp256k1},
     sighash::SighashCache,
     transaction::Version,
-    Address, Amount, EcdsaSighashType, Network, OutPoint, PrivateKey, Script, ScriptBuf, Sequence,
+    Address, Amount, EcdsaSighashType, OutPoint, PrivateKey, Script, ScriptBuf, Sequence,
     Transaction, TxIn, TxOut, Txid, Witness,
 };
 use bitcoincore_rpc::{
@@ -44,14 +44,9 @@ impl BtcTransactionBuilder {
                     .ok_or(anyhow!("utxo not fount {:?}", txid))
             })?;
 
-        let hash = if script.is_p2pk() || script.is_p2pkh() {
-            let data = script
-                .p2pk_public_key()
-                .ok_or(anyhow!("script p2pk to public key error"))?
-                .to_bytes();
-            keccak256(keccak256(data)).to_vec()
-        } else {
-            script.script_hash().as_byte_array().to_vec()
+        let hash = match script.p2pk_public_key() {
+            Some(v) => keccak256(keccak256(v.to_bytes())).to_vec(),
+            None => script.script_hash().as_byte_array().to_vec(),
         };
 
         Ok(H160::from_slice(&hash[0..20]))
@@ -63,21 +58,6 @@ impl BtcTransactionBuilder {
             .map_err(|e| anyhow!(e))
     }
 
-    pub fn parse_sk(sk: &str, network: &str) -> Result<(PrivateKey, Address)> {
-        let private_key = PrivateKey {
-            compressed: true,
-            network: Network::from_core_arg(network)?,
-            inner: SecretKey::from_str(sk.strip_prefix("0x").unwrap_or(sk))?,
-        };
-
-        let secp: Secp256k1<All> = Secp256k1::new();
-        let pk = private_key.public_key(&secp);
-
-        let address = Address::p2wpkh(&pk, private_key.network)?;
-
-        Ok((private_key, address))
-    }
-
     pub async fn build_transaction(
         &self,
         novo_api_url: &str,
@@ -86,6 +66,7 @@ impl BtcTransactionBuilder {
         unspents: Vec<ListUnspentRes>,
         eth_fee: u64,
         hash: &[u8; 40],
+        pay_da_fee: bool,
     ) -> Result<Transaction> {
         log::info!("unspent:{:#?}", unspents);
 
@@ -97,23 +78,27 @@ impl BtcTransactionBuilder {
             fee = relay_fee;
         }
 
-        let (da_address, da_fee) = {
+        let (da_address, da_fee) = if pay_da_fee {
             let da_info = call::<Option<Value>, Value>(novo_api_url, "novo_getDaInfo", &None, None)
                 .await
                 .map_err(|e| anyhow!("{:?}", e))?
                 .ok_or(anyhow!("da info empty"))?;
+
             let da_fee = da_info
                 .get("fee")
                 .and_then(|v| v.as_u64())
-                .ok_or(anyhow!("da info empty"))?;
+                .ok_or(anyhow!("da fee empty"))?;
+
             let addr = da_info
-                .get("fee")
+                .get("address")
                 .and_then(|v| v.as_str())
-                .ok_or(anyhow!("da info empty"))?;
+                .ok_or(anyhow!("da address empty"))?;
             (
-                Address::from_str(addr).map(|a| a.assume_checked())?,
+                Some(Address::from_str(addr).map(|a| a.assume_checked())?),
                 Amount::from_sat(da_fee),
             )
+        } else {
+            (None, Amount::ZERO)
         };
         fee += da_fee;
 
@@ -129,7 +114,7 @@ impl BtcTransactionBuilder {
                     vout: it.tx_pos as u32,
                 },
                 sequence: Sequence::MAX,
-                script_sig: ScriptBuf::new(),
+                script_sig: ScriptBuf::default(),
                 witness: Witness::new(),
             };
             input.push(txin);
@@ -142,34 +127,40 @@ impl BtcTransactionBuilder {
                 amount: Some(Amount::from_sat(it.value)),
             };
             sign_inputs.push(sign_input);
+
+            if sum_amount > fee {
+                break;
+            }
         }
 
         if sum_amount <= fee {
             return Err(anyhow!("Insufficient balance"));
         }
-
+        let mut output = vec![
+            TxOut {
+                value: Amount::from_sat(0),
+                script_pubkey: Builder::new()
+                    .push_opcode(OP_RETURN)
+                    .push_slice(hash)
+                    .into_script(),
+            },
+            TxOut {
+                value: sum_amount - fee,
+                script_pubkey: script,
+            },
+        ];
+        if let Some(addr) = da_address {
+            output.push(TxOut {
+                value: da_fee,
+                script_pubkey: addr.script_pubkey(),
+            })
+        }
         // create transaction
         let mut unsigned_tx = Transaction {
             version: Version::ONE,
             lock_time: LockTime::ZERO,
             input,
-            output: vec![
-                TxOut {
-                    value: Amount::from_sat(0),
-                    script_pubkey: Builder::new()
-                        .push_opcode(OP_RETURN)
-                        .push_slice(hash)
-                        .into_script(),
-                },
-                TxOut {
-                    value: da_fee,
-                    script_pubkey: da_address.script_pubkey(),
-                },
-                TxOut {
-                    value: sum_amount - fee,
-                    script_pubkey: script,
-                },
-            ],
+            output,
         };
         let sighash_type = EcdsaSighashType::All;
         let secp = Secp256k1::new();
