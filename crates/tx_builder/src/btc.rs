@@ -106,6 +106,9 @@ impl BtcTransactionBuilder {
         let mut sign_inputs = Vec::new();
         let mut sum_amount = Amount::ZERO;
         for it in unspents.iter() {
+            if Amount::from_sat(it.value) < fee {
+                continue;
+            }
             sum_amount += Amount::from_sat(it.value);
 
             let txin = TxIn {

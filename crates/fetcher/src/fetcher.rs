@@ -165,7 +165,7 @@ impl Fetcher {
         Ok(Some(ret))
     }
 
-    async fn decode_vout(&self, out: &TxOut, source_hash: H256, sender: H160) -> Result<Data> {
+    async fn decode_vout(&self, out: &TxOut, _source_hash: H256, sender: H160) -> Result<Data> {
         let code = out.script_pubkey.as_bytes();
         if code.len() != 42
             || Some(OP_RETURN) != code.first().cloned().map(From::from)
@@ -194,7 +194,7 @@ impl Fetcher {
             }
             let mut deposit_tx = DepositTransaction::decode(&Rlp::new(&tx_data[1..]))?;
             deposit_tx.from = sender;
-            deposit_tx.source_hash = source_hash;
+            //deposit_tx.source_hash = source_hash;
 
             let tx = SignedTransaction::from_deposit_tx(deposit_tx, self.chain_id.into());
             log::info!("transaction:{:#?}", tx);
