@@ -13,5 +13,6 @@ bitcoin = { workspace = true }
 bitcoincore-rpc = { workspace = true }
 ethers = { workspace = true }
 json-rpc-server = { workspace = true }
+rt-evm = { workspace = true }
 
 electrum-client = "0.19.0"

@@ -197,7 +197,6 @@ impl Fetcher {
             //deposit_tx.source_hash = source_hash;
 
             let tx = SignedTransaction::from_deposit_tx(deposit_tx, self.chain_id.into());
-            log::info!("transaction:{:#?}", tx);
             Ok(Data::Transaction(Box::new(tx)))
         } else if vc.tx_type == 1 {
             let cfg = serde_json::from_slice(&tx_data)?;

@@ -8,7 +8,10 @@ use da::DAServiceManager;
 use fetcher::{Data, Fetcher};
 use json_rpc_server::serve;
 use rpc_server::handle::NovoHandle;
-use rt_evm::{model::traits::BlockStorage, EvmRuntime};
+use rt_evm::{
+    model::{traits::BlockStorage, types::UnsignedTransaction},
+    EvmRuntime,
+};
 
 #[derive(Debug, Args)]
 pub struct Node {
@@ -129,6 +132,9 @@ impl Node {
                 sleep(Duration::from_secs(1));
                 continue;
             };
+            let hdr = evm_rt
+                .generate_blockproducer(Default::default(), block_time)
+                .map_err(|e| anyhow!(e.to_string()))?;
             let mut txs = vec![];
             for data in datas {
                 match data {
@@ -140,14 +146,18 @@ impl Node {
                             serde_json::to_string_pretty(&cfg)?,
                         )?;
                     }
-                    Data::Transaction(tx) => txs.push(*tx),
+                    Data::Transaction(mut tx) => {
+                        if let UnsignedTransaction::Deposit(ref mut tx) = tx.transaction.unsigned {
+                            tx.nonce =
+                                hdr.get_nonce(tx.from, None).map_err(|e| anyhow!("{}", e))?;
+                        }
+                        txs.push(*tx)
+                    }
                 }
             }
             log::debug!("execute transaction:{:#?}", txs);
             log::info!("execute transaction:{}", txs.len());
-            let hdr = evm_rt
-                .generate_blockproducer(Default::default(), block_time)
-                .map_err(|e| anyhow!(e.to_string()))?;
+
             hdr.produce_block(txs).map_err(|e| anyhow!(e.to_string()))?;
         }
     }
